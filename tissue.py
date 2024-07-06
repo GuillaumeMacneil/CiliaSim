@@ -2,7 +2,7 @@ from cell import BasicCell, MulticiliatedCell, BorderCell
 from functions import *
 
 import numpy as np
-from scipy.spatial import Voronoi
+from scipy.spatial import Voronoi, Delaunay
 from scipy.stats import qmc
 from collections import defaultdict
 import matplotlib.pyplot as plt
@@ -36,6 +36,7 @@ class Tissue():
         self.num_cells = (x - 1) * (y - 1)
         self.cells = []
         self.center_only = False
+        self.plot = (None, None)
 
     def set_center_only(self, value: bool):
         self.center_only = value
@@ -160,11 +161,18 @@ class Tissue():
 
         constrained_vertices, constrained_regions = constrain_voronoi(self.x, self.y, voronoi)
 
+        # Plot cell edges
         for i in range(len(constrained_regions)):
             polygon = constrained_vertices[constrained_regions[i]]
             ax.fill(*zip(*polygon), edgecolor="black", fill=False)
             
+        # Plot springs
+        #for ridge in voronoi.ridge_points:
+        #    start_point = points[ridge[0]]
+        #    end_point = points[ridge[1]]
+        #    ax.plot([start_point[0], end_point[0]], [start_point[1], end_point[1]], color="blue")
 
+        # Plot center points
         basic_points = np.array(basic_points)
         multiciliated_points = np.array(multiciliated_points)
         border_points = np.array(border_points)
@@ -173,6 +181,7 @@ class Tissue():
         ax.scatter(multiciliated_points[:, 0], multiciliated_points[:, 1], s=20, color="orange")   
         ax.scatter(border_points[:, 0], border_points[:, 1], s=20, color="green")   
 
+        # Plot border
         ax.plot([0, self.x, self.x, 0, 0], [0, 0, self.y, self.y, 0], 'k-')
 
         plt.title(title)
@@ -181,15 +190,51 @@ class Tissue():
 
         return (fig, ax)
 
+    def reevaluate_neighbours(self):
+        cell_points = np.array([np.array([cell.x, cell.y]) for cell in self.cells])
+        delaunay = Delaunay(cell_points)
+        neighbour_vertices = delaunay.vertex_neighbor_vertices
+        
+        for i in range(len(cell_points)):
+            neighbours = neighbour_vertices[1][neighbour_vertices[0][i]:neighbour_vertices[0][i+1]]
+            self.cells[i].neighbours = np.array(neighbours)
+
     def anneal(self, iterations: int = 2000):
         plt.ion()
-        plot = (None, None)
+        for iteration in range(iterations):
+            for cell in self.cells:
+                cell.step(self.cells, annealing=True)
+
+            if iteration % 50 == 0:
+                self.reevaluate_neighbours()
+                self.plot = self.render(f"Tissue annealing @ iteration {iteration}", self.plot)
+
+        # Set the areas of the cell neighbourhood polygons once annealing is complete
+        voronoi = Voronoi(np.array([np.array([cell.x, cell.y]) for cell in self.cells]))
+        constrained_vertices, _ = constrain_voronoi(self.x, self.y, voronoi)
+
+        for point_index, region_index in enumerate(voronoi.point_region):
+            region = voronoi.regions[region_index]
+            if -1 not in region:
+                polygon = np.array([np.array([self.cells[neighbour].x, self.cells[neighbour].y]) for neighbour in self.cells[point_index].neighbours])
+                area = polygon_area(polygon)
+                self.cells[point_index].set_area(area)
+            else:
+                self.cells[point_index].set_area(np.inf)
+
+
+    def exogenous_flow(self, flow_direction: np.ndarray, flow_magnitude: float, iterations: int = 5000):
+        plt.ion()
         for iteration in range(iterations):
             for cell in self.cells:
                 cell.step(self.cells)
 
+                if isinstance(cell, MulticiliatedCell):
+                    cell.external_force(flow_direction, flow_magnitude)
+
             if iteration % 50 == 0:
-                plot = self.render(f"Tissue @ iteration {iteration}", plot)
+                self.plot = self.render(f"Tissue under exogenous flow ({flow_magnitude}) @ iteration {iteration}", self.plot)
+        
 
 
 # TESTING
@@ -197,3 +242,4 @@ tissue = Tissue(10, 10, 0.1)
 tissue.set_center_only(True)
 tissue.random_layout()
 tissue.anneal()
+tissue.exogenous_flow(np.array([0, 1]), 5)
