@@ -1,13 +1,12 @@
 from cell import BasicCell, MulticiliatedCell, BorderCell
 from functions import *
+from plotting import *
 
 import numpy as np
 from scipy.spatial import Voronoi, Delaunay
 from scipy.stats import qmc
 from collections import defaultdict
 import matplotlib.pyplot as plt
-
-import cProfile
 
 class Tissue():
     """
@@ -39,13 +38,16 @@ class Tissue():
         self.num_cells = (x - 1) * (y - 1)
         self.cells = []
         self.center_only = False
-        self.plot = (None, None)
+        self.plot = (None, None, None)
+        self.plot_type = 0
 
+        self.target_spring_length = 1
+        
         # Exogenous flow and torque parameters
         self.flow_direction = np.array([0, 0])
         self.flow_magnitude = 0
         self.torque_magnitude = 0
-
+        
     def set_center_only(self, value: bool):
         self.center_only = value
 
@@ -111,81 +113,6 @@ class Tissue():
 
         self.generate_cells(np.array(points))
 
-    def render(self, title: str = "", plot: tuple = (None, None)):
-        """
-        Renders the tissue with cells colored based on their type.
-
-        Args:
-            title (str): The title of the plot.
-        """
-        
-        multiciliated_points = []
-        border_points = []
-        basic_points = []
-        points = []
-
-        for cell in self.cells:
-            if isinstance(cell, MulticiliatedCell):
-                multiciliated_points.append(np.array([cell.x, cell.y]))
-            elif isinstance(cell, BorderCell):
-                border_points.append(np.array([cell.x, cell.y]))
-            else:
-                basic_points.append(np.array([cell.x, cell.y]))
-
-            points.append(np.array([cell.x, cell.y]))
-
-        voronoi = Voronoi(points)
-
-        if not plot[0] and not plot[1]:
-            fig, ax = plt.subplots()
-        else:
-            fig, ax = plot
-
-        # Plot cell edges
-        if len(border_points) == 0:
-            for i in range(len(voronoi.regions)):
-                if -1 not in voronoi.regions[i]:
-                    polygon = voronoi.vertices[voronoi.regions[i]]
-                    ax.fill(*zip(*polygon), edgecolor="black", fill=False)
-        else:
-            for i in range(len(self.cells)):
-                if not isinstance(self.cells[i], BorderCell):
-                    region_index = voronoi.point_region[i]
-                    polygon = voronoi.vertices[voronoi.regions[region_index]]
-                    ax.fill(*zip(*polygon), edgecolor="black", fill=False)
-
-            
-        # Plot springs
-        #for i in range(len(points)):
-        #    start = points[i]
-        #    for neighbour_index in self.cells[i].neighbours:
-        #        end = points[neighbour_index]
-        #        ax.plot([start[0], end[0]], [start[1], end[1]], color="blue")
-
-        # Plot center points
-        basic_points = np.array(basic_points)
-        multiciliated_points = np.array(multiciliated_points)
-        border_points = np.array(border_points)
-
-        ax.scatter(basic_points[:, 0], basic_points[:, 1], s=20, color="blue")
-        if multiciliated_points.size > 0 and border_points.size > 0:
-            ax.scatter(multiciliated_points[:, 0], multiciliated_points[:, 1], s=20, color="orange")   
-            ax.scatter(border_points[:, 0], border_points[:, 1], s=20, color="green")   
-
-        # Plot border
-        ax.plot([0, self.x, self.x, 0, 0], [0, 0, self.y, self.y, 0], 'k-')
-        plt.title(title)
-        plt.show()
-
-        plt.xlim([0, self.x])
-        plt.ylim([0, self.y])
-
-        plt.pause(0.2)
-        
-        ax.clear()
-
-        return (fig, ax)
-
     def set_cell_types(self):
         type_mask = np.zeros(len(self.cells))
         cell_points = np.array([np.array([cell.x, cell.y]) for cell in self.cells])
@@ -230,6 +157,16 @@ class Tissue():
 
         target_area = target_area / count
 
+        target_spring_length = 0
+        count = 0 
+        for i in range(len(cell_points)):
+            differences = cell_points[self.cells[i].neighbours] - cell_points[i]
+            distances = np.linalg.norm(differences, axis=1)
+            target_spring_length += np.sum(distances)
+            count += len(distances)
+
+        self.target_spring_length = target_spring_length / count
+
         for i in range(len(type_mask)):
             id = self.cells[i].id
             x = self.cells[i].x
@@ -251,6 +188,18 @@ class Tissue():
 
     def set_torque(self, torque_magnitude):
         self.torque_magnitude = torque_magnitude
+
+    def set_plot_basic(self):
+        self.plot_type = 0
+
+    def set_plot_spring(self):
+        self.plot_type = 1
+
+    def set_plot_force_vector(self):
+        self.plot_type = 2
+
+    def set_plot_major_axes(self):
+        self.plot_type = 3
 
     def calculate_force_matrix(self, annealing = False):
         cell_points = np.array([np.array([cell.x, cell.y]) for cell in self.cells])
@@ -287,9 +236,9 @@ class Tissue():
             unit_vectors = differences / distances[:, np.newaxis]
 
             if isinstance(self.cells[i], BorderCell):
-                forces = ((distances[:, np.newaxis] - 1) * unit_vectors) / 10
+                forces = ((distances[:, np.newaxis] - self.target_spring_length) * unit_vectors) / 10
             else:
-                forces = (distances[:, np.newaxis] - 1) * unit_vectors
+                forces = (distances[:, np.newaxis] - self.target_spring_length) * unit_vectors
 
             if not annealing:
                 # Calculate repulsive forces
@@ -353,7 +302,7 @@ class Tissue():
                 self.cells.append(BorderCell(len(self.cells), reflected_point[0], reflected_point[1], np.array([edge[0], edge[1], shared_cell])))
                 print(f"Adding new BorderCell at ({reflected_point[0]}, {reflected_point[1]})")
 
-    def anneal(self, iterations: int = 2000):
+    def anneal(self, title: str, iterations: int = 2000):
         plt.ion()
         for iteration in range(iterations):
             force_matrix = self.calculate_force_matrix(annealing=True)
@@ -361,32 +310,28 @@ class Tissue():
                 self.cells[i].step(force_matrix, annealing=True)
 
             if iteration % 100 == 0:
-                self.plot = self.render(f"Tissue annealing @ iteration {iteration}", self.plot)
+                information = f"Iteration: {iteration}"
+                self.plot = plot_tissue(self.cells, title, 0.5, self.plot, self.x, self.y, information=information)
 
         self.set_cell_types()
         self.evaluate_boundary()
 
-    def simulate(self, iterations: int = 5000):
+    def simulate(self, title: str, iterations: int = 5000):
         for iteration in range(iterations):
             force_matrix = self.calculate_force_matrix()
             for cell in self.cells:
                 cell.step(force_matrix)
 
+            if iteration % 100 == 0:
+                information = f"Iteration: {iteration}\nCilia force magnitude: {self.flow_magnitude}\nCilia force direction: {self.flow_direction}"
+                if self.plot_type == 0:
+                    self.plot = plot_tissue(self.cells, title, 0.5, self.plot, information=information)
+                elif self.plot_type == 1:
+                    self.plot = plot_springs(self.cells, force_matrix, title, 0.5, self.plot, information=information)
+                elif self.plot_type == 2:
+                    self.plot = plot_force_vectors(self.cells, force_matrix, title, 0.5, self.plot, information=information)
+                elif self.plot_type == 3:
+                    self.plot = plot_major_axes(self.cells, title, 0.5, self.plot, information=information)
+
             self.evaluate_boundary()
 
-            if iteration % 100 == 0:
-                self.plot = self.render(f"Tissue under exogenous flow ({self.flow_magnitude}) @ iteration {iteration}", self.plot)
-
-
-# TESTING
-def main():
-    tissue = Tissue(10, 10,  0.1)
-    tissue.set_center_only(True)
-    tissue.random_layout()
-    tissue.anneal()
-    tissue.set_flow(np.array([0, 1]), 0.4)
-    tissue.simulate(3000)
-
-
-cProfile.run('main()', sort="tottime")
-#main()
