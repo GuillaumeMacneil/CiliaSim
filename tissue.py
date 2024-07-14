@@ -7,28 +7,10 @@ from scipy.spatial import Voronoi, Delaunay
 from scipy.stats import qmc
 from collections import defaultdict
 import matplotlib.pyplot as plt
+import json
 
 class Tissue():
-    """
-    Represents a tissue consisting of multiciliated and basic cells arranged in a 2D space.
-
-    Attributes:
-        size (int): The size of the tissue (length of one side of the square tissue).
-        density (float): The density of multiciliated cells in the tissue.
-        num_cells (int): The total number of cells in the tissue.
-        cells (np.ndarray): An array of cells in the tissue.
-    """
-
     def __init__(self, x: int, y: int, cilia_density: float):
-        """
-        Initializes a Tissue object with a given size and cilia density.
-
-        Args:
-            x (int): The size x-dimension of the tissue.
-            y (int): The size y-dimension of the tissue.
-            cilia_density (float): The density of multiciliated cells.
-        """
-
         if (x < 2) or (y < 2):
             raise ValueError("Tissue dimensions must be 2x2 or larger.")
 
@@ -37,31 +19,36 @@ class Tissue():
         self.density = cilia_density
         self.num_cells = (x - 1) * (y - 1)
         self.cells = []
+        self.global_iteration = 0
         self.center_only = False
         self.plot = (None, None, None)
         self.plot_type = 0
 
+        self.force_matrix = np.zeros((self.num_cells, self.num_cells, 2))
+        self.position_buffer = []
+
         self.target_spring_length = 1
+
+        # State encoding variables
+        self.tracking = False
+        self.cell_inits = [] # [[Cell Type (0 -> Basic, 1 -> Boundary, 2 -> Multiciliated), Target Area], ...]
+        self.force_states = [] # [[Global Iteration, Affected Cell (-1 indicates all), Direction [x, y], Magnitude z], ...]
+        self.cell_states = {} # [[Cell Positions], [Cell Positions], ...]
         
         # Exogenous flow and torque parameters
         self.flow_direction = np.array([0, 0])
         self.flow_magnitude = 0
-        self.torque_magnitude = 0
         
     def set_center_only(self, value: bool):
         self.center_only = value
 
-    def generate_cells(self, points: np.ndarray):
-        """
-        Generates cells based on given points and assigns them as multiciliated or basic.
+    def set_tracking(self):
+        self.tracking = True
 
-        Args:
-            points (np.ndarray): Array of points representing cell positions.
-        """
+    def generate_cells(self, points: np.ndarray):
         voronoi = Voronoi(points)
         neighbours = defaultdict(list)
 
-        # Calculate neighbours
         for ridge_point in voronoi.ridge_points:
             if ridge_point[1] not in neighbours[ridge_point[0]]:
                 neighbours[ridge_point[0]].append(ridge_point[1])
@@ -71,12 +58,8 @@ class Tissue():
 
         for i in range(len(points)):
             self.cells.append(BasicCell(i, points[i][0], points[i][1], np.array(neighbours[i])))
-            
     
     def random_layout(self):
-        """
-        Generates a Poisson-disk sampled layout of cells within the tissue to ensure even distribution.
-        """
         points = []
         radius = 1 / np.sqrt(self.num_cells)
         while len(points) != self.num_cells:
@@ -90,27 +73,24 @@ class Tissue():
         self.generate_cells(points)
 
     def hexagonal_grid_layout(self):
-        """
-        Generates a hexagonal grid layout of cells within the tissue.
-        """
-        hexagon_side_length = np.sqrt(1 / (3 * np.sqrt(3) / 2))
-
-        horizontal_spacing = 3 * hexagon_side_length
-        vertical_spacing = np.sqrt(3) * hexagon_side_length
+        num_rings = int(np.floor(1/2 + np.sqrt(12 * self.num_cells - 3) / 6))
 
         points = []
-        row = 0
-        while row * vertical_spacing < self.y - 1:
-            for col in range(int(self.x - 1 / horizontal_spacing) + 1):
-                x = col * horizontal_spacing + (row % 2) * (1.5 * hexagon_side_length)
-                y = row * vertical_spacing
-                if x < self.x - 1 and y < self.y - 1:
-                    points.append((x + 0.5, y + 0.5))
-            row += 1
+        cx = self.x / 2
+        cy = self.y / 2
 
-        if len(points) > self.num_cells:
-            points = points[:self.num_cells]
-
+        # Add the center point
+        points.append((cx, cy))
+        
+        for i in range(1, num_rings + 1):
+            for j in range(6 * i):
+                angle = j * np.pi / (3 * i)
+                if i % 2 == 0:
+                    angle += np.pi / (3 * i)
+                x = cx + i * np.cos(angle)
+                y = cy + i * np.sin(angle)
+                points.append((x, y))
+                    
         self.generate_cells(np.array(points))
 
     def set_cell_types(self):
@@ -147,47 +127,46 @@ class Tissue():
 
             type_mask[np.where(type_mask == 3)[0]] = 0
 
-        target_area = 0
-        count = 0
-        for i in range(len(cell_points)):
-            region_id = voronoi.point_region[i]
-            if -1 not in voronoi.regions[region_id]:
-                target_area += polygon_area(cell_points[self.cells[i].neighbours])
-                count += 1
-
-        target_area = target_area / count
-
-        target_spring_length = 0
-        count = 0 
-        for i in range(len(cell_points)):
-            differences = cell_points[self.cells[i].neighbours] - cell_points[i]
-            distances = np.linalg.norm(differences, axis=1)
-            target_spring_length += np.sum(distances)
-            count += len(distances)
-
-        self.target_spring_length = target_spring_length / count
-
         for i in range(len(type_mask)):
             id = self.cells[i].id
             x = self.cells[i].x
             y = self.cells[i].y
             neighbours = self.cells[i].neighbours
-            if type_mask[i] == 0:
-                #self.cells[i].set_area(polygon_area(voronoi.vertices[voronoi.regions[voronoi.point_region[id]]]))
-                self.cells[i].set_area(target_area)
-            elif type_mask[i] == 1:
+            if type_mask[i] == 1:
                 self.cells[i] = BorderCell(id, x, y, neighbours)
             elif type_mask[i] == 2:
                 self.cells[i] = MulticiliatedCell(id, x, y, neighbours)
-                #self.cells[i].set_area(polygon_area(voronoi.vertices[voronoi.regions[voronoi.point_region[id]]]))
+
+        self.evaluate_boundary()
+
+        target_area = 0
+        count = 0
+        for i in range(len(cell_points)):
+            if type_mask[i] != 1:
+                target_area += polygon_area(cell_points[self.cells[i].neighbours])
+                count += 1
+
+        target_area /= count
+
+        for i in range(len(type_mask)):
+            if type_mask[i] == 0 or type_mask[i] == 2:
                 self.cells[i].set_area(target_area)
 
+        if self.tracking:
+            for cell in self.cells:
+                if isinstance(cell, BasicCell):
+                    self.cell_inits.append([0, cell.area])
+                elif isinstance(cell, BorderCell):
+                    self.cell_inits.append([1, 0])
+                else:
+                    self.cell_inits.append([2, cell.area])
+
     def set_flow(self, flow_direction, flow_magnitude):
-        self.flow_direction = flow_direction
+        self.flow_direction = np.array(flow_direction)
         self.flow_magnitude = flow_magnitude
 
-    def set_torque(self, torque_magnitude):
-        self.torque_magnitude = torque_magnitude
+        if self.tracking:
+            self.force_states.append([self.global_iteration, -1, flow_direction, flow_magnitude])
 
     def set_plot_basic(self):
         self.plot_type = 0
@@ -201,7 +180,10 @@ class Tissue():
     def set_plot_major_axes(self):
         self.plot_type = 3
 
-    def calculate_force_matrix(self, annealing = False):
+    def set_plot_avg_major_axes(self):
+        self.plot_type = 4
+
+    def calculate_force_matrix(self, tension_only: bool = False):
         cell_points = np.array([np.array([cell.x, cell.y]) for cell in self.cells])
         delaunay = Delaunay(cell_points)
 
@@ -240,7 +222,7 @@ class Tissue():
             else:
                 forces = (distances[:, np.newaxis] - self.target_spring_length) * unit_vectors
 
-            if not annealing:
+            if not tension_only:
                 # Calculate repulsive forces
                 if not isinstance(self.cells[i], BorderCell):
                     area = polygon_area(cell_points[self.cells[i].neighbours])
@@ -300,38 +282,62 @@ class Tissue():
                 reflected_point = 2 * (b + projection_vector) - a
 
                 self.cells.append(BorderCell(len(self.cells), reflected_point[0], reflected_point[1], np.array([edge[0], edge[1], shared_cell])))
-                print(f"Adding new BorderCell at ({reflected_point[0]}, {reflected_point[1]})")
+                self.cell_inits.append([1, 0])
+                self.position_buffer.append([reflected_point[0], reflected_point[1]])
 
-    def anneal(self, title: str, iterations: int = 2000):
+    def increment_global_iteration(self, title: str):
+        if self.global_iteration % 100 == 0:
+            information = f"Iteration: {self.global_iteration}\nCilia force magnitude: {self.flow_magnitude}\nCilia force direction: {self.flow_direction}"
+            if self.plot_type == 0:
+                self.plot = plot_tissue(self.cells, title, 0.5, self.plot, information=information)
+            elif self.plot_type == 1:
+                self.plot = plot_springs(self.cells, title, 0.5, self.plot, information=information)
+            elif self.plot_type == 2:
+                self.plot = plot_force_vectors(self.cells, self.force_matrix, title, 0.5, self.plot, information=information)
+            elif self.plot_type == 3:
+                self.plot = plot_major_axes(self.cells, title, 0.5, self.plot, information=information)
+            elif self.plot_type == 4:
+                self.plot = plot_avg_major_axes(self.cells, title, 0.5, self.plot, information=information)
+
+        self.global_iteration += 1
+
+    def simulate(self, title: str, iterations: int = 5000, annealing: bool = False):
         plt.ion()
-        for iteration in range(iterations):
-            force_matrix = self.calculate_force_matrix(annealing=True)
-            for i in range(len(self.cells)):
-                self.cells[i].step(force_matrix, annealing=True)
+        if annealing:
+            tension_only_iterations = int(np.floor(iterations / 2))
+            for i in range(tension_only_iterations):
+                self.force_matrix = self.calculate_force_matrix(tension_only=True)
+                for cell in self.cells:
+                    cell.step(self.force_matrix)
 
-            if iteration % 100 == 0:
-                information = f"Iteration: {iteration}"
-                self.plot = plot_tissue(self.cells, title, 0.5, self.plot, self.x, self.y, information=information)
+                self.evaluate_boundary()
+                self.increment_global_iteration(title)
 
-        self.set_cell_types()
-        self.evaluate_boundary()
+            self.set_cell_types()
 
-    def simulate(self, title: str, iterations: int = 5000):
-        for iteration in range(iterations):
-            force_matrix = self.calculate_force_matrix()
-            for cell in self.cells:
-                cell.step(force_matrix)
+            for i in range(iterations - tension_only_iterations):
+                self.force_matrix = self.calculate_force_matrix()
+                for cell in self.cells:
+                    cell.step(self.force_matrix)
 
-            if iteration % 100 == 0:
-                information = f"Iteration: {iteration}\nCilia force magnitude: {self.flow_magnitude}\nCilia force direction: {self.flow_direction}"
-                if self.plot_type == 0:
-                    self.plot = plot_tissue(self.cells, title, 0.5, self.plot, information=information)
-                elif self.plot_type == 1:
-                    self.plot = plot_springs(self.cells, force_matrix, title, 0.5, self.plot, information=information)
-                elif self.plot_type == 2:
-                    self.plot = plot_force_vectors(self.cells, force_matrix, title, 0.5, self.plot, information=information)
-                elif self.plot_type == 3:
-                    self.plot = plot_major_axes(self.cells, title, 0.5, self.plot, information=information)
+                self.evaluate_boundary()
+                self.increment_global_iteration(title)
+        else:
+            for i in range(iterations):
+                self.force_matrix = self.calculate_force_matrix()
+                for cell in self.cells:
+                    cell.step(self.force_matrix)
+                    self.position_buffer.append([cell.x, cell.y])
 
-            self.evaluate_boundary()
+                self.evaluate_boundary()
+                if self.tracking:
+                    self.cell_states[self.global_iteration] = self.position_buffer
+                self.position_buffer = []
+                self.increment_global_iteration(title)
+    
+    def write_to_file(self, path: str):
+        json_data = {"dimensions": {"x": self.x, "y": self.y}, "cell_inits": self.cell_inits, "force_states": self.force_states, "cell_states": self.cell_states}
+        json_object = json.dumps(json_data)
 
+        with open(path, "w") as output_file:
+            output_file.write(json_object)
