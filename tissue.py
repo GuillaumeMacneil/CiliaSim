@@ -32,7 +32,7 @@ class Tissue():
         # State encoding variables
         self.tracking = False
         self.cell_inits = [] # [[Cell Type (0 -> Basic, 1 -> Boundary, 2 -> Multiciliated), Target Area], ...]
-        self.force_states = [] # [[Global Iteration, Affected Cell (-1 indicates all), Direction [x, y], Magnitude z], ...]
+        self.force_states = {} # [[Global Iteration, Affected Cell (-1 indicates all), Direction [x, y], Magnitude z], ...]
         self.cell_states = {} # [[Cell Positions], [Cell Positions], ...]
         
         # Exogenous flow and torque parameters
@@ -166,7 +166,7 @@ class Tissue():
         self.flow_magnitude = flow_magnitude
 
         if self.tracking:
-            self.force_states.append([self.global_iteration, -1, flow_direction, flow_magnitude])
+            self.force_states[self.global_iteration] = [-1, flow_direction, flow_magnitude]
 
     def set_plot_basic(self):
         self.plot_type = 0
@@ -336,7 +336,7 @@ class Tissue():
                 self.increment_global_iteration(title)
     
     def write_to_file(self, path: str):
-        json_data = {"dimensions": {"x": self.x, "y": self.y}, "cell_inits": self.cell_inits, "force_states": self.force_states, "cell_states": self.cell_states}
+        json_data = {"parameters": {"x": self.x, "y": self.y, "cilia_density": self.density}, "cell_inits": self.cell_inits, "force_states": self.force_states, "cell_states": self.cell_states}
         json_object = json.dumps(json_data)
 
         with open(path, "w") as output_file:
