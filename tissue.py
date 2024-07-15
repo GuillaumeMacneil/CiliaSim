@@ -21,7 +21,7 @@ class Tissue():
         self.cells = []
         self.global_iteration = 0
         self.center_only = False
-        self.plot = (None, None, None)
+        self.plot = (None, None, None, None)
         self.plot_type = 0
 
         self.force_matrix = np.zeros((self.num_cells, self.num_cells, 2))
@@ -147,19 +147,10 @@ class Tissue():
                 count += 1
 
         target_area /= count
-
+        
         for i in range(len(type_mask)):
             if type_mask[i] == 0 or type_mask[i] == 2:
                 self.cells[i].set_area(target_area)
-
-        if self.tracking:
-            for cell in self.cells:
-                if isinstance(cell, BasicCell):
-                    self.cell_inits.append([0, cell.area])
-                elif isinstance(cell, BorderCell):
-                    self.cell_inits.append([1, 0])
-                else:
-                    self.cell_inits.append([2, cell.area])
 
     def set_flow(self, flow_direction, flow_magnitude):
         self.flow_direction = np.array(flow_direction)
@@ -282,22 +273,30 @@ class Tissue():
                 reflected_point = 2 * (b + projection_vector) - a
 
                 self.cells.append(BorderCell(len(self.cells), reflected_point[0], reflected_point[1], np.array([edge[0], edge[1], shared_cell])))
-                self.cell_inits.append([1, 0])
-                self.position_buffer.append([reflected_point[0], reflected_point[1]])
 
-    def increment_global_iteration(self, title: str):
+    def set_cell_inits(self):
+        for cell in self.cells:
+            if isinstance(cell, BasicCell):
+                self.cell_inits.append([0, cell.area])
+            elif isinstance(cell, BorderCell):
+                self.cell_inits.append([1, 0])
+            else:
+                self.cell_inits.append([2, cell.area])
+
+
+    def increment_global_iteration(self, title: str, x_lim: int = 0, y_lim: int = 0):
         if self.global_iteration % 100 == 0:
             information = f"Iteration: {self.global_iteration}\nCilia force magnitude: {self.flow_magnitude}\nCilia force direction: {self.flow_direction}"
             if self.plot_type == 0:
-                self.plot = plot_tissue(self.cells, title, 0.5, self.plot, information=information)
+                self.plot = plot_tissue(self.cells, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information,)
             elif self.plot_type == 1:
-                self.plot = plot_springs(self.cells, title, 0.5, self.plot, information=information)
+                self.plot = plot_springs(self.cells, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 2:
-                self.plot = plot_force_vectors(self.cells, self.force_matrix, title, 0.5, self.plot, information=information)
+                self.plot = plot_force_vectors(self.cells, self.force_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 3:
-                self.plot = plot_major_axes(self.cells, title, 0.5, self.plot, information=information)
+                self.plot = plot_major_axes(self.cells, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 4:
-                self.plot = plot_avg_major_axes(self.cells, title, 0.5, self.plot, information=information)
+                self.plot = plot_avg_major_axes(self.cells, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
 
         self.global_iteration += 1
 
@@ -311,7 +310,7 @@ class Tissue():
                     cell.step(self.force_matrix)
 
                 self.evaluate_boundary()
-                self.increment_global_iteration(title)
+                self.increment_global_iteration(title, x_lim=self.x, y_lim=self.y)
 
             self.set_cell_types()
 
@@ -334,6 +333,9 @@ class Tissue():
                     self.cell_states[self.global_iteration] = self.position_buffer
                 self.position_buffer = []
                 self.increment_global_iteration(title)
+            
+        if self.tracking:
+            self.set_cell_inits()
     
     def write_to_file(self, path: str):
         json_data = {"parameters": {"x": self.x, "y": self.y, "cilia_density": self.density}, "cell_inits": self.cell_inits, "force_states": self.force_states, "cell_states": self.cell_states}

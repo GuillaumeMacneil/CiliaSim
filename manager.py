@@ -14,13 +14,13 @@ class LoadedTissue():
         self.force_states = force_states
 
         keys = self.cell_states.keys()
+        keys = [int(key) for key in keys]
         self.min_it = min(keys)
         self.max_it = max(keys)
         self.current_it = self.min_it
 
         self.load_iteration(self.current_it)
         plt.ion()
-        
 
     def load_iteration(self, iteration: int):
         # FIXME: Very inefficient to reset the cell list every time
@@ -56,10 +56,32 @@ class LoadedTissue():
         else:
             raise ValueError(f"Iteration {iteration} does not lie in the range [{self.min_it}, {self.max_it}]")
 
+    def set_flow(self,flow_direction: list, flow_magnitude: float):
+        self.tissue.set_flow(flow_direction, flow_magnitude)
+
+    def simulate(self, title: str, iterations: int = 5000):
+        self.tissue.simulate(title, iterations)
+
     def plot_tissue(self, title: str, duration: float):
         information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
         self.tissue.plot = plot_tissue(self.tissue.cells, title, duration, self.tissue.plot, information=information)
 
+    def plot_springs(self, title: str, duration: float):
+        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        self.tissue.plot = plot_springs(self.tissue.cells, title, duration, self.tissue.plot, information=information)
+
+    def plot_force_vectors(self, title: str, duration: float):
+        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        force_matrix = self.tissue.calculate_force_matrix()
+        self.tissue.plot = plot_force_vectors(self.tissue.cells, force_matrix, title, duration, self.tissue.plot, information=information)
+
+    def plot_major_axes(self, title: str, duration: float):
+        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        self.tissue.plot = plot_major_axes(self.tissue.cells, title, duration, self.tissue.plot, information=information)
+
+    def plot_avg_major_axes(self, title: str, duration: float):
+        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        self.tissue.plot = plot_avg_major_axes(self.tissue.cells, title, duration, self.tissue.plot, information=information)
 
 class Manager():
     def __init__(self):
@@ -75,12 +97,32 @@ class Manager():
             force_states = json_data["force_states"]
 
             self.tissues.append(LoadedTissue(parameters, cell_inits, cell_states, force_states))
+            
+    def animate_tissue(self, title: str, index: int, plot_type: int, start_iteration: int = 0, end_iteration: int = 0, step=100):
+        tissue = self.tissues[index]
+
+        if start_iteration == 0:
+            start_iteration = int(tissue.min_it)
+        
+        if end_iteration == 0:
+            end_iteration = int(tissue.max_it)
+        
+        for i in range(0, end_iteration - start_iteration, step):
+            tissue.load_iteration(start_iteration + i)
+            if plot_type == 0:
+                tissue.plot_tissue(title, duration=0.1)
+            elif plot_type == 1:
+                tissue.plot_springs(title, duration=0.1)
+            elif plot_type == 2:
+                tissue.plot_force_vectors(title, duration=0.1)
+            elif plot_type == 3:
+                tissue.plot_major_axes(title, duration=0.1)
+            elif plot_type == 4:
+                tissue.plot_avg_major_axes(title, duration=0.1)
+
     
 # TESTING
 manager = Manager()
 manager.read_from_file("./test.json")
-manager.tissues[-1].plot_tissue("", 1)
-manager.tissues[-1].load_iteration(int(manager.tissues[-1].current_it) + 1)
-manager.tissues[-1].plot_tissue("", 1)
-
+manager.animate_tissue("Animating Tissue Progression", index=0, plot_type=0, step=10)
 
