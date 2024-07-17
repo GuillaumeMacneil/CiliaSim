@@ -41,7 +41,7 @@ class LoadedTissue():
                     self.tissue.cells[-1].set_area(self.cell_inits[i][1])
 
             # FIXME: This will need to be improved when the force definitions become more complicated
-            closest = 0
+            closest = None
             for key in self.force_states.keys():
                 if int(key) == int(iteration):
                     closest = key
@@ -51,7 +51,11 @@ class LoadedTissue():
                 else:
                     break
 
-            self.tissue.set_flow(self.force_states[closest][1], self.force_states[closest][2])
+            if closest == None:
+                self.tissue.set_flow([0, 0], 0)
+            else:
+                self.tissue.set_flow(self.force_states[closest][1], self.force_states[closest][2])
+
             self.current_it = iteration
         else:
             raise ValueError(f"Iteration {iteration} does not lie in the range [{self.min_it}, {self.max_it}]")
@@ -120,9 +124,10 @@ class Manager():
             elif plot_type == 4:
                 tissue.plot_avg_major_axes(title, duration=0.1)
 
+
     
 # TESTING
 manager = Manager()
 manager.read_from_file("./test.json")
-manager.animate_tissue("Animating Tissue Progression", index=0, plot_type=0, step=10)
+manager.animate_tissue("Animating Tissue Progression", index=0, plot_type=2, step=10)
 

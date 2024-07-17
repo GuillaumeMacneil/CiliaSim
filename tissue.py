@@ -28,6 +28,7 @@ class Tissue():
         self.position_buffer = []
 
         self.target_spring_length = 1
+        self.target_cell_area = 1
 
         # State encoding variables
         self.tracking = False
@@ -58,6 +59,8 @@ class Tissue():
 
         for i in range(len(points)):
             self.cells.append(BasicCell(i, points[i][0], points[i][1], np.array(neighbours[i])))
+
+        self.set_cell_types()
     
     def random_layout(self):
         points = []
@@ -143,10 +146,12 @@ class Tissue():
         count = 0
         for i in range(len(cell_points)):
             if type_mask[i] != 1:
-                target_area += polygon_area(cell_points[self.cells[i].neighbours])
+                region_index = voronoi.point_region[i]
+                target_area += polygon_area(voronoi.vertices[voronoi.regions[region_index]])
                 count += 1
 
         target_area /= count
+#        target_area /= 10
         
         for i in range(len(type_mask)):
             if type_mask[i] == 0 or type_mask[i] == 2:
@@ -174,9 +179,13 @@ class Tissue():
     def set_plot_avg_major_axes(self):
         self.plot_type = 4
 
-    def calculate_force_matrix(self, tension_only: bool = False):
+    def set_plot_area_deltas(self):
+        self.plot_type = 5
+
+    def calculate_force_matrix(self):
         cell_points = np.array([np.array([cell.x, cell.y]) for cell in self.cells])
         delaunay = Delaunay(cell_points)
+        voronoi = Voronoi(cell_points)
 
         neighbour_vertices = delaunay.vertex_neighbor_vertices
 
@@ -202,38 +211,38 @@ class Tissue():
         force_matrix = np.zeros((len(self.cells), len(self.cells), 2))
 
         for i in range(len(cell_points)):
-            # Calculate attractive forces
+            # Calculate spring forces
             neighbour_positions = cell_points[self.cells[i].neighbours]
             differences = neighbour_positions - cell_points[i]
             distances = np.linalg.norm(differences, axis=1)
             unit_vectors = differences / distances[:, np.newaxis]
 
+            force_magnitudes = distances[:, np.newaxis] - self.target_spring_length
+
+            force_matrix[i, self.cells[i].neighbours] += force_magnitudes * unit_vectors
             if isinstance(self.cells[i], BorderCell):
-                forces = ((distances[:, np.newaxis] - self.target_spring_length) * unit_vectors) / 10
-            else:
-                forces = (distances[:, np.newaxis] - self.target_spring_length) * unit_vectors
+                force_matrix[i, self.cells[i].neighbours] /= 10
+            
+            if not isinstance(self.cells[i], BorderCell):
+                # Calculate pressure forces
+                region_index = voronoi.point_region[i]
+                area = polygon_area(voronoi.vertices[voronoi.regions[region_index]])
+                area_difference = self.target_cell_area - area
 
-            if not tension_only:
-                # Calculate repulsive forces
-                if not isinstance(self.cells[i], BorderCell):
-                    area = polygon_area(cell_points[self.cells[i].neighbours])
-                    area_difference = self.cells[i].area - area
+                force_matrix[i, self.cells[i].neighbours] += area_difference * unit_vectors
+                force_matrix[self.cells[i].neighbours, i] += area_difference * unit_vectors
 
-                    forces -= (area_difference / len(unit_vectors)) * unit_vectors
+            if isinstance(self.cells[i], MulticiliatedCell):
+                # Calculate external force contributions
+                flow = self.flow_direction * self.flow_magnitude
+                
+                pinv_differences = np.linalg.pinv(differences.T)
+                force_distribution = np.dot(pinv_differences, flow)
 
-                if isinstance(self.cells[i], MulticiliatedCell):
-                    # Calculate external force contributions
-                    flow = self.flow_direction * self.flow_magnitude
-                    
-                    pinv_differences = np.linalg.pinv(differences.T)
-                    force_distribution = np.dot(pinv_differences, flow)
-
-                    external_forces = force_distribution[:, np.newaxis] * differences
-                    forces += external_forces 
-
-            force_matrix[i, self.cells[i].neighbours] += forces 
-
-        return force_matrix 
+                external_forces = force_distribution[:, np.newaxis] * differences
+                force_matrix[i, self.cells[i].neighbours] += external_forces 
+        
+        return force_matrix
 
     def evaluate_boundary(self):
         # Determine which cells are boundary cells and the edges between them
@@ -283,7 +292,6 @@ class Tissue():
             else:
                 self.cell_inits.append([2, cell.area])
 
-
     def increment_global_iteration(self, title: str, x_lim: int = 0, y_lim: int = 0):
         if self.global_iteration % 100 == 0:
             information = f"Iteration: {self.global_iteration}\nCilia force magnitude: {self.flow_magnitude}\nCilia force direction: {self.flow_direction}"
@@ -297,42 +305,24 @@ class Tissue():
                 self.plot = plot_major_axes(self.cells, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 4:
                 self.plot = plot_avg_major_axes(self.cells, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
+            elif self.plot_type == 5:
+                self.plot = plot_area_delta(self.cells, self.target_cell_area, title, 0.5, self.plot, information=information)
 
         self.global_iteration += 1
 
-    def simulate(self, title: str, iterations: int = 5000, annealing: bool = False):
+    def simulate(self, title: str, iterations: int = 5000):
         plt.ion()
-        if annealing:
-            tension_only_iterations = int(np.floor(iterations / 2))
-            for i in range(tension_only_iterations):
-                self.force_matrix = self.calculate_force_matrix(tension_only=True)
-                for cell in self.cells:
-                    cell.step(self.force_matrix)
+        for i in range(iterations):
+            self.force_matrix = self.calculate_force_matrix()
+            for cell in self.cells:
+                cell.step(self.force_matrix)
+                self.position_buffer.append([cell.x, cell.y])
 
-                self.evaluate_boundary()
-                self.increment_global_iteration(title, x_lim=self.x, y_lim=self.y)
-
-            self.set_cell_types()
-
-            for i in range(iterations - tension_only_iterations):
-                self.force_matrix = self.calculate_force_matrix()
-                for cell in self.cells:
-                    cell.step(self.force_matrix)
-
-                self.evaluate_boundary()
-                self.increment_global_iteration(title)
-        else:
-            for i in range(iterations):
-                self.force_matrix = self.calculate_force_matrix()
-                for cell in self.cells:
-                    cell.step(self.force_matrix)
-                    self.position_buffer.append([cell.x, cell.y])
-
-                self.evaluate_boundary()
-                if self.tracking:
-                    self.cell_states[self.global_iteration] = self.position_buffer
-                self.position_buffer = []
-                self.increment_global_iteration(title)
+            if self.tracking:
+                self.cell_states[self.global_iteration] = self.position_buffer
+            self.position_buffer = []
+            self.increment_global_iteration(title)
+            self.evaluate_boundary()
             
         if self.tracking:
             self.set_cell_inits()

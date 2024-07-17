@@ -1,10 +1,11 @@
 from cell import BasicCell, MulticiliatedCell, BorderCell
+from functions import *
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolours
 import matplotlib.cm as cm
 import numpy as np
-from scipy.spatial import Voronoi
+from scipy.spatial import Voronoi, Delaunay
 
 def plot_tissue(cells: list, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
     points = []
@@ -452,4 +453,40 @@ def plot_avg_major_axes(cells: list, title: str, duration: float, plot: tuple = 
     
     return (fig, ax, None, information_box)
 
+def plot_area_delta(cells: list, target_area: float, title: str, duration: float, plot: tuple = (None, None), information: str = ""):
+    points = np.array([[cell.x, cell.y] for cell in cells])
+    voronoi = Voronoi(points)
+
+    area_diffs = []
+    for i in range(len(cells)):
+        if not isinstance(cells[i], BorderCell):
+            area = polygon_area(voronoi.vertices[voronoi.regions[voronoi.point_region[i]]]) 
+            area_diffs.append(area - target_area)
+
+    if not plot[0] and not plot[1]:
+        fig, ax = plt.subplots()
+        information_box = None
+    else:
+        fig, ax, information_box = plot[0], plot[1], plot[3]
+
+    ax.hist(area_diffs)
+
+    fig.set_figwidth(8)
+    fig.set_figheight(8)
+    
+    if not information_box:
+        information_dict = dict(boxstyle="round", facecolor="white", alpha=0.5)
+        information_box = fig.text(0.05, 0.95, information, transform=ax.transAxes, fontsize=10, verticalalignment="top", bbox=information_dict)
+    else:
+        information_box.set_text(information)
+
+    plt.xlim([-1, 1])
+
+    plt.title(title)
+    plt.show()
+    plt.pause(duration)
+
+    ax.clear()
+    
+    return (fig, ax, None, information_box)
 
