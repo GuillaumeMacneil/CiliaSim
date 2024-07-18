@@ -1,4 +1,3 @@
-from cell import BasicCell, MulticiliatedCell, BorderCell
 from functions import *
 
 import matplotlib.pyplot as plt
@@ -7,26 +6,11 @@ import matplotlib.cm as cm
 import numpy as np
 from scipy.spatial import Voronoi, Delaunay
 
-def plot_tissue(cells: list, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
-    points = []
-    basic_points = []
-    basic_indices = []
-    multiciliated_points = []
-    multiciliated_indices = []
-    boundary_points = []
-    boundary_indices = []
-
-    for i in range(len(cells)):
-        points.append([cells[i].x, cells[i].y])
-        if isinstance(cells[i], BasicCell):
-            basic_points.append([cells[i].x, cells[i].y])
-            basic_indices.append(i)
-        elif isinstance(cells[i], BorderCell):
-            boundary_points.append([cells[i].x, cells[i].y])
-            boundary_indices.append(i)
-        else:
-            multiciliated_points.append([cells[i].x, cells[i].y])
-            multiciliated_indices.append(i)
+def plot_tissue(points: np.ndarray, cell_types: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
+    basic_indices = np.where(cell_types == 0)[0]
+    boundary_indices = np.where(cell_types == 1)[0]
+    boundary_points = points[boundary_indices]
+    multiciliated_indices = np.where(cell_types == 2)[0]
 
     voronoi = Voronoi(points)
 
@@ -37,22 +21,16 @@ def plot_tissue(cells: list, title: str, duration: float, plot: tuple = (None, N
         fig, ax, information_box = plot[0], plot[1], plot[3]
 
     for basic_index in basic_indices:
-        region = voronoi.regions[voronoi.point_region[basic_index]]
-        if -1 not in region:
-            polygon = voronoi.vertices[region]
-            ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey")
-            ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
+        polygon = voronoi.vertices[voronoi.regions[voronoi.point_region[basic_index]]]
+        ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey")
+        ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
 
     for multiciliated_index in multiciliated_indices:
-        region = voronoi.regions[voronoi.point_region[multiciliated_index]]
-        if -1 not in region:
-            polygon = voronoi.vertices[region]
-            ax.fill(*zip(*polygon), alpha=0.6, color="orange")
-            ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
+        polygon = voronoi.vertices[voronoi.regions[voronoi.point_region[multiciliated_index]]]
+        ax.fill(*zip(*polygon), alpha=0.6, color="orange")
+        ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
 
-    if boundary_points:
-        boundary_array = np.array(boundary_points)
-        ax.scatter(boundary_array[:, 0], boundary_array[:, 1], s=20, color="green")   
+    ax.scatter(boundary_points[:, 0], boundary_points[:, 1], s=20, color="green")   
 
     fig.set_figwidth(8)
     fig.set_figheight(8)
@@ -75,28 +53,12 @@ def plot_tissue(cells: list, title: str, duration: float, plot: tuple = (None, N
     
     return (fig, ax, None, information_box)
 
-def plot_springs(cells: list, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
-    points = []
-    basic_points = []
-    basic_indices = []
-    multiciliated_points = []
-    multiciliated_indices = []
-    boundary_points = []
-    boundary_indices = []
+def plot_springs(points: np.ndarray, cell_types: np.ndarray, adjacency_matrix: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
+    basic_indices = np.where(cell_types == 0)[0]
+    boundary_indices = np.where(cell_types == 1)[0]
+    boundary_points = points[boundary_indices]
+    multiciliated_indices = np.where(cell_types == 2)[0]
 
-    for i in range(len(cells)):
-        points.append([cells[i].x, cells[i].y])
-        if isinstance(cells[i], BasicCell):
-            basic_points.append([cells[i].x, cells[i].y])
-            basic_indices.append(i)
-        elif isinstance(cells[i], BorderCell):
-            boundary_points.append([cells[i].x, cells[i].y])
-            boundary_indices.append(i)
-        else:
-            multiciliated_points.append([cells[i].x, cells[i].y])
-            multiciliated_indices.append(i)
-    
-    points = np.array(points)
     voronoi = Voronoi(points)
 
     if not plot[0] and not plot[1]:
@@ -111,26 +73,20 @@ def plot_springs(cells: list, title: str, duration: float, plot: tuple = (None, 
         colourbar = plot[2]
         
     for basic_index in basic_indices:
-        region = voronoi.regions[voronoi.point_region[basic_index]]
-        if -1 not in region:
-            polygon = voronoi.vertices[region]
-            ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey")
-            ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
+        polygon = voronoi.vertices[voronoi.regions[voronoi.point_region[basic_index]]]
+        ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey")
+        ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
 
     for multiciliated_index in multiciliated_indices:
-        region = voronoi.regions[voronoi.point_region[multiciliated_index]]
-        if -1 not in region:
-            polygon = voronoi.vertices[region]
-            ax.fill(*zip(*polygon), alpha=0.6, color="orange")
-            ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
+        polygon = voronoi.vertices[voronoi.regions[voronoi.point_region[multiciliated_index]]]
+        ax.fill(*zip(*polygon), alpha=0.6, color="orange")
+        ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
 
-    if boundary_points:
-        boundary_array = np.array(boundary_points)
-        ax.scatter(boundary_array[:, 0], boundary_array[:, 1], s=20, color="green")   
+    ax.scatter(boundary_points[:, 0], boundary_points[:, 1], s=20, color="green")   
 
-    distance_matrix = np.zeros((len(cells), len(cells)))
+    distance_matrix = np.zeros((len(points), len(points)))
     for i in range(len(points)):
-        neighbours = cells[i].neighbours
+        neighbours = np.where(adjacency_matrix[i] == 1)
         neighbour_points = points[neighbours]
         distances = np.linalg.norm(neighbour_points - points[i], axis=1) - 1
         distance_matrix[i, neighbours] = distances
@@ -140,10 +96,10 @@ def plot_springs(cells: list, title: str, duration: float, plot: tuple = (None, 
     colour_matrix = colourmap(norm(distance_matrix))
 
     for i in range(len(points)):
-        neighbours = cells[i].neighbours
+        neighbours = np.where(adjacency_matrix[i] == 1)
         neighbour_points = points[neighbours]
-        for j in range(len(neighbours)):
-            ax.plot([points[i][0], neighbour_points[j, 0]], [points[i][1], neighbour_points[j, 1]], color=colour_matrix[i][neighbours][j])
+        for j in range(len(neighbours[0])):
+            ax.plot([points[i, 0], neighbour_points[j, 0]], [points[i, 1], neighbour_points[j, 1]], color=colour_matrix[i][neighbours][j])
 
     fig.set_figwidth(10)
     fig.set_figheight(8)
@@ -171,28 +127,12 @@ def plot_springs(cells: list, title: str, duration: float, plot: tuple = (None, 
     
     return (fig, ax, colourbar, information_box)
 
-def plot_force_vectors(cells: list, force_matrix: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
-    points = []
-    basic_points = []
-    basic_indices = []
-    multiciliated_points = []
-    multiciliated_indices = []
-    boundary_points = []
-    boundary_indices = []
+def plot_force_vectors(points: np.ndarray, cell_types: np.ndarray, force_matrix: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
+    basic_indices = np.where(cell_types == 0)[0]
+    boundary_indices = np.where(cell_types == 1)[0]
+    boundary_points = points[boundary_indices]
+    multiciliated_indices = np.where(cell_types == 2)[0]
 
-    for i in range(len(cells)):
-        points.append([cells[i].x, cells[i].y])
-        if isinstance(cells[i], BasicCell):
-            basic_points.append([cells[i].x, cells[i].y])
-            basic_indices.append(i)
-        elif isinstance(cells[i], BorderCell):
-            boundary_points.append([cells[i].x, cells[i].y])
-            boundary_indices.append(i)
-        else:
-            multiciliated_points.append([cells[i].x, cells[i].y])
-            multiciliated_indices.append(i)
-
-    points = np.array(points)
     voronoi = Voronoi(points)
 
     if not plot[0] and not plot[1]:
@@ -200,26 +140,20 @@ def plot_force_vectors(cells: list, force_matrix: np.ndarray, title: str, durati
         information_box = None
     else:
         fig, ax, information_box = plot[0], plot[1], plot[3]
-        
+
     for basic_index in basic_indices:
-        region = voronoi.regions[voronoi.point_region[basic_index]]
-        if -1 not in region:
-            polygon = voronoi.vertices[region]
-            ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey")
-            ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
+        polygon = voronoi.vertices[voronoi.regions[voronoi.point_region[basic_index]]]
+        ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey")
+        ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
 
     for multiciliated_index in multiciliated_indices:
-        region = voronoi.regions[voronoi.point_region[multiciliated_index]]
-        if -1 not in region:
-            polygon = voronoi.vertices[region]
-            ax.fill(*zip(*polygon), alpha=0.6, color="orange")
-            ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
+        polygon = voronoi.vertices[voronoi.regions[voronoi.point_region[multiciliated_index]]]
+        ax.fill(*zip(*polygon), alpha=0.6, color="orange")
+        ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
 
-    if boundary_points:
-        boundary_array = np.array(boundary_points)
-        ax.scatter(boundary_array[:, 0], boundary_array[:, 1], s=20, color="green")   
+    ax.scatter(boundary_points[:, 0], boundary_points[:, 1], s=20, color="green")   
 
-    force_vector = np.array([np.sum(force_matrix[point_index, cells[point_index].neighbours], axis=0) for point_index in range(len(cells))])
+    force_vector = np.array([np.sum(force_matrix[point_index], axis=0) for point_index in range(len(points))])
     ax.quiver(points[:, 0], points[:, 1], force_vector[:, 0], force_vector[:, 1])
 
     fig.set_figwidth(8)
@@ -243,26 +177,11 @@ def plot_force_vectors(cells: list, force_matrix: np.ndarray, title: str, durati
     
     return (fig, ax, None, information_box)
 
-def plot_major_axes(cells: list, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
-    points = []
-    basic_points = []
-    basic_indices = []
-    multiciliated_points = []
-    multiciliated_indices = []
-    boundary_points = []
-    boundary_indices = []
-
-    for i in range(len(cells)):
-        points.append([cells[i].x, cells[i].y])
-        if isinstance(cells[i], BasicCell):
-            basic_points.append([cells[i].x, cells[i].y])
-            basic_indices.append(i)
-        elif isinstance(cells[i], BorderCell):
-            boundary_points.append([cells[i].x, cells[i].y])
-            boundary_indices.append(i)
-        else:
-            multiciliated_points.append([cells[i].x, cells[i].y])
-            multiciliated_indices.append(i)
+def plot_major_axes(points: np.ndarray, cell_types: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
+    basic_indices = np.where(cell_types == 0)[0]
+    boundary_indices = np.where(cell_types == 1)[0]
+    boundary_points = points[boundary_indices]
+    multiciliated_indices = np.where(cell_types == 2)[0]
 
     voronoi = Voronoi(points)
 
@@ -270,55 +189,49 @@ def plot_major_axes(cells: list, title: str, duration: float, plot: tuple = (Non
         fig, ax = plt.subplots()
         information_box = None
     else:
-        fig, ax, information_box = plot[0], plot[1], plot[3]
-        
+        fig, ax, information_box = plot[0], plot[1], plot[3]    
+
     for basic_index in basic_indices:
-        region = voronoi.regions[voronoi.point_region[basic_index]]
-        if -1 not in region:
-            polygon = voronoi.vertices[region]
-            ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey")
-            ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
+        polygon = voronoi.vertices[voronoi.regions[voronoi.point_region[basic_index]]]
+        ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey")
+        ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
 
-            center = np.array([cells[basic_index].x, cells[basic_index].y])
-            centered_points = polygon - center 
-            covariance_matrix = np.cov(centered_points, rowvar=False)
-            eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
-            major_axis_index = np.argmax(eigenvalues)
-            major_axis = eigenvectors[:, major_axis_index]
-            
-            projections = np.dot(centered_points, major_axis)
-            length = projections.max() - projections.min()
+        center = points[basic_index]
+        centered_points = polygon - center 
+        covariance_matrix = np.cov(centered_points, rowvar=False)
+        eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
+        major_axis_index = np.argmax(eigenvalues)
+        major_axis = eigenvectors[:, major_axis_index]
+        
+        projections = np.dot(centered_points, major_axis)
+        length = projections.max() - projections.min()
 
-            positive_end = center + (length / 2) * major_axis
-            negative_end = center - (length / 2) * major_axis
+        positive_end = center + (length / 2) * major_axis
+        negative_end = center - (length / 2) * major_axis
 
-            ax.plot([negative_end[0], positive_end[0]], [negative_end[1], positive_end[1]], linewidth=2, color="red")
+        ax.plot([negative_end[0], positive_end[0]], [negative_end[1], positive_end[1]], linewidth=2, color="red")
 
     for multiciliated_index in multiciliated_indices:
-        region = voronoi.regions[voronoi.point_region[multiciliated_index]]
-        if -1 not in region:
-            polygon = voronoi.vertices[region]
-            ax.fill(*zip(*polygon), alpha=0.6, color="orange")
-            ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
+        polygon = voronoi.vertices[voronoi.regions[voronoi.point_region[multiciliated_index]]]
+        ax.fill(*zip(*polygon), alpha=0.6, color="orange")
+        ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
 
-            center = np.array([cells[multiciliated_index].x, cells[multiciliated_index].y])
-            centered_points = polygon - center 
-            covariance_matrix = np.cov(centered_points, rowvar=False)
-            eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
-            major_axis_index = np.argmax(eigenvalues)
-            major_axis = eigenvectors[:, major_axis_index]
-            
-            projections = np.dot(centered_points, major_axis)
-            length = projections.max() - projections.min()
+        center = points[multiciliated_index]
+        centered_points = polygon - center 
+        covariance_matrix = np.cov(centered_points, rowvar=False)
+        eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
+        major_axis_index = np.argmax(eigenvalues)
+        major_axis = eigenvectors[:, major_axis_index]
+        
+        projections = np.dot(centered_points, major_axis)
+        length = projections.max() - projections.min()
 
-            positive_end = center + (length / 2) * major_axis
-            negative_end = center - (length / 2) * major_axis
+        positive_end = center + (length / 2) * major_axis
+        negative_end = center - (length / 2) * major_axis
 
-            ax.plot([negative_end[0], positive_end[0]], [negative_end[1], positive_end[1]], linewidth=2, color="red")
+        ax.plot([negative_end[0], positive_end[0]], [negative_end[1], positive_end[1]], linewidth=2, color="red")
 
-    if boundary_points:
-        boundary_array = np.array(boundary_points)
-        ax.scatter(boundary_array[:, 0], boundary_array[:, 1], s=20, color="green")   
+    ax.scatter(boundary_points[:, 0], boundary_points[:, 1], s=20, color="green")   
 
     fig.set_figwidth(8)
     fig.set_figheight(8)
@@ -341,26 +254,11 @@ def plot_major_axes(cells: list, title: str, duration: float, plot: tuple = (Non
     
     return (fig, ax, None, information_box)
 
-def plot_avg_major_axes(cells: list, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
-    points = []
-    basic_points = []
-    basic_indices = []
-    multiciliated_points = []
-    multiciliated_indices = []
-    boundary_points = []
-    boundary_indices = []
-
-    for i in range(len(cells)):
-        points.append([cells[i].x, cells[i].y])
-        if isinstance(cells[i], BasicCell):
-            basic_points.append([cells[i].x, cells[i].y])
-            basic_indices.append(i)
-        elif isinstance(cells[i], BorderCell):
-            boundary_points.append([cells[i].x, cells[i].y])
-            boundary_indices.append(i)
-        else:
-            multiciliated_points.append([cells[i].x, cells[i].y])
-            multiciliated_indices.append(i)
+def plot_avg_major_axes(points: np.ndarray, cell_types: np.ndarray, adjacency_matrix: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
+    basic_indices = np.where(cell_types == 0)[0]
+    boundary_indices = np.where(cell_types == 1)[0]
+    boundary_points = points[boundary_indices]
+    multiciliated_indices = np.where(cell_types == 2)[0]
 
     voronoi = Voronoi(points)
 
@@ -368,69 +266,63 @@ def plot_avg_major_axes(cells: list, title: str, duration: float, plot: tuple = 
         fig, ax = plt.subplots()
         information_box = None
     else:
-        fig, ax, information_box = plot[0], plot[1], plot[3]
-        
+        fig, ax, information_box = plot[0], plot[1], plot[3]    
+       
     for basic_index in basic_indices:
-        region = voronoi.regions[voronoi.point_region[basic_index]]
-        if -1 not in region:
-            polygon = voronoi.vertices[region]
-            ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey")
-            ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
+        polygon = voronoi.vertices[voronoi.regions[voronoi.point_region[basic_index]]]
+        ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey")
+        ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
 
-            major_axes = []
-            for neighbour in cells[basic_index].neighbours:
-                center = np.array([cells[neighbour].x, cells[neighbour].y])
-                centered_points = polygon - center 
-                covariance_matrix = np.cov(centered_points, rowvar=False)
-                eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
-                major_axis_index = np.argmax(eigenvalues)
-                major_axis = eigenvectors[:, major_axis_index]
-                major_axes.append(major_axis)    
-
-            avg_major_axis = np.mean(major_axes, axis=0)
-            center = np.array([cells[basic_index].x, cells[basic_index].y])
+        major_axes = []
+        for neighbour in np.where(adjacency_matrix[basic_index] == 1)[0]:
+            center = points[neighbour] 
             centered_points = polygon - center 
+            covariance_matrix = np.cov(centered_points, rowvar=False)
+            eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
+            major_axis_index = np.argmax(eigenvalues)
+            major_axis = eigenvectors[:, major_axis_index]
+            major_axes.append(major_axis)    
 
-            projections = np.dot(centered_points, avg_major_axis)
-            length = projections.max() - projections.min()
+        avg_major_axis = np.mean(major_axes, axis=0)
+        center = points[basic_index] 
+        centered_points = polygon - center 
 
-            positive_end = center + (length / 2) * avg_major_axis
-            negative_end = center - (length / 2) * avg_major_axis
+        projections = np.dot(centered_points, avg_major_axis)
+        length = projections.max() - projections.min()
 
-            ax.plot([negative_end[0], positive_end[0]], [negative_end[1], positive_end[1]], linewidth=2, color="red")
+        positive_end = center + (length / 2) * avg_major_axis
+        negative_end = center - (length / 2) * avg_major_axis
+
+        ax.plot([negative_end[0], positive_end[0]], [negative_end[1], positive_end[1]], linewidth=2, color="red")
 
     for multiciliated_index in multiciliated_indices:
-        region = voronoi.regions[voronoi.point_region[multiciliated_index]]
-        if -1 not in region:
-            polygon = voronoi.vertices[region]
-            ax.fill(*zip(*polygon), alpha=0.6, color="orange")
-            ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
+        polygon = voronoi.vertices[voronoi.regions[voronoi.point_region[multiciliated_index]]]
+        ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey")
+        ax.fill(*zip(*polygon), alpha=0.6, edgecolor="black", fill=False)
 
-            major_axes = []
-            for neighbour in cells[multiciliated_index].neighbours:
-                center = np.array([cells[neighbour].x, cells[neighbour].y])
-                centered_points = polygon - center 
-                covariance_matrix = np.cov(centered_points, rowvar=False)
-                eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
-                major_axis_index = np.argmax(eigenvalues)
-                major_axis = eigenvectors[:, major_axis_index]
-                major_axes.append(major_axis)    
-
-            avg_major_axis = np.mean(major_axes, axis=0)
-            center = np.array([cells[multiciliated_index].x, cells[multiciliated_index].y])
+        major_axes = []
+        for neighbour in np.where(adjacency_matrix[multiciliated_index] == 1)[0]:
+            center = points[neighbour] 
             centered_points = polygon - center 
+            covariance_matrix = np.cov(centered_points, rowvar=False)
+            eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
+            major_axis_index = np.argmax(eigenvalues)
+            major_axis = eigenvectors[:, major_axis_index]
+            major_axes.append(major_axis)    
 
-            projections = np.dot(centered_points, avg_major_axis)
-            length = projections.max() - projections.min()
+        avg_major_axis = np.mean(major_axes, axis=0)
+        center = points[multiciliated_index] 
+        centered_points = polygon - center 
 
-            positive_end = center + (length / 2) * avg_major_axis
-            negative_end = center - (length / 2) * avg_major_axis
+        projections = np.dot(centered_points, avg_major_axis)
+        length = projections.max() - projections.min()
 
-            ax.plot([negative_end[0], positive_end[0]], [negative_end[1], positive_end[1]], linewidth=2, color="red")
+        positive_end = center + (length / 2) * avg_major_axis
+        negative_end = center - (length / 2) * avg_major_axis
 
-    if boundary_points:
-        boundary_array = np.array(boundary_points)
-        ax.scatter(boundary_array[:, 0], boundary_array[:, 1], s=20, color="green")   
+        ax.plot([negative_end[0], positive_end[0]], [negative_end[1], positive_end[1]], linewidth=2, color="red")
+
+    ax.scatter(boundary_points[:, 0], boundary_points[:, 1], s=20, color="green")   
 
     fig.set_figwidth(8)
     fig.set_figheight(8)
@@ -453,15 +345,14 @@ def plot_avg_major_axes(cells: list, title: str, duration: float, plot: tuple = 
     
     return (fig, ax, None, information_box)
 
-def plot_area_delta(cells: list, target_area: float, title: str, duration: float, plot: tuple = (None, None), information: str = ""):
-    points = np.array([[cell.x, cell.y] for cell in cells])
+def plot_area_delta(points: np.ndarray, cell_types: np.ndarray, target_area: float, title: str, duration: float, plot: tuple = (None, None), information: str = ""):
     voronoi = Voronoi(points)
 
     area_diffs = []
-    for i in range(len(cells)):
-        if not isinstance(cells[i], BorderCell):
-            area = polygon_area(voronoi.vertices[voronoi.regions[voronoi.point_region[i]]]) 
-            area_diffs.append(area - target_area)
+    non_border_indices = np.where(cell_types != 1)[0]
+    for i in non_border_indices:
+        area = polygon_area(voronoi.vertices[voronoi.regions[voronoi.point_region[i]]]) 
+        area_diffs.append(area - target_area)
 
     if not plot[0] and not plot[1]:
         fig, ax = plt.subplots()
