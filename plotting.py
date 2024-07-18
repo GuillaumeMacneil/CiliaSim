@@ -480,8 +480,6 @@ def plot_area_delta(cells: list, target_area: float, title: str, duration: float
     else:
         information_box.set_text(information)
 
-    plt.xlim([-1, 1])
-
     plt.title(title)
     plt.show()
     plt.pause(duration)

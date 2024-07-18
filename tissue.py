@@ -1,4 +1,4 @@
-from cell import BasicCell, MulticiliatedCell, BorderCell
+from cell import BasicCell, MulticiliatedCell, BorderCell 
 from functions import *
 from plotting import *
 
@@ -29,6 +29,7 @@ class Tissue():
 
         self.target_spring_length = 1
         self.target_cell_area = 1
+        self.critical_force = 0.5
 
         # State encoding variables
         self.tracking = False
@@ -47,18 +48,12 @@ class Tissue():
         self.tracking = True
 
     def generate_cells(self, points: np.ndarray):
-        voronoi = Voronoi(points)
-        neighbours = defaultdict(list)
-
-        for ridge_point in voronoi.ridge_points:
-            if ridge_point[1] not in neighbours[ridge_point[0]]:
-                neighbours[ridge_point[0]].append(ridge_point[1])
-
-            if ridge_point[0] not in neighbours[ridge_point[1]]:
-                neighbours[ridge_point[1]].append(ridge_point[0])
+        delaunay = Delaunay(points)
+        neighbour_vertices = delaunay.vertex_neighbor_vertices
 
         for i in range(len(points)):
-            self.cells.append(BasicCell(i, points[i][0], points[i][1], np.array(neighbours[i])))
+            neighbours = neighbour_vertices[1][neighbour_vertices[0][i]:neighbour_vertices[0][i+1]]
+            self.cells.append(BasicCell(i, points[i][0], points[i][1], neighbours))
 
         self.set_cell_types()
     
@@ -142,20 +137,18 @@ class Tissue():
 
         self.evaluate_boundary()
 
-        target_area = 0
-        count = 0
-        for i in range(len(cell_points)):
-            if type_mask[i] != 1:
-                region_index = voronoi.point_region[i]
-                target_area += polygon_area(voronoi.vertices[voronoi.regions[region_index]])
-                count += 1
-
-        target_area /= count
-#        target_area /= 10
+        #target_area = 0
+        #count = 0
+        #for i in range(len(cell_points)):
+        #    if type_mask[i] != 1:
+        #        region_index = voronoi.point_region[i]
+        #        target_area += polygon_area(voronoi.vertices[voronoi.regions[region_index]])
+        #        count += 1
+        #target_area /= count
         
         for i in range(len(type_mask)):
             if type_mask[i] == 0 or type_mask[i] == 2:
-                self.cells[i].set_area(target_area)
+                self.cells[i].set_area(self.target_cell_area)
 
     def set_flow(self, flow_direction, flow_magnitude):
         self.flow_direction = np.array(flow_direction)
@@ -227,7 +220,7 @@ class Tissue():
                 # Calculate pressure forces
                 region_index = voronoi.point_region[i]
                 area = polygon_area(voronoi.vertices[voronoi.regions[region_index]])
-                area_difference = self.target_cell_area - area
+                area_difference = self.cells[i].area - area
 
                 force_matrix[i, self.cells[i].neighbours] += area_difference * unit_vectors
                 force_matrix[self.cells[i].neighbours, i] += area_difference * unit_vectors
@@ -243,6 +236,27 @@ class Tissue():
                 force_matrix[i, self.cells[i].neighbours] += external_forces 
         
         return force_matrix
+
+    def evaluate_connectivity(self):
+        visited = []
+        edges = []
+        for i in range(len(self.cells)):
+            for neighbour in self.cells[i].neighbours:
+                if neighbour not in visited:
+                    if np.linalg.norm(self.force_matrix[i][neighbour]) > self.critical_force or np.linalg.norm(self.force_matrix[neighbour][i]) > self.critical_force :
+                        edges.append((i, neighbour))
+           
+            visited.append(i)
+        
+        print(edges)
+
+        for a, b in edges:
+            shared_cells = np.intersect1d(self.cells[a].neighbours, self.cells[b].neighbours)
+            if len(shared_cells) == 2:
+                self.cells[a].neighbours = self.cells[a].neighbours[self.cells[a].neighbours != b]
+                self.cells[b].neighbours = self.cells[b].neighbours[self.cells[b].neighbours != a]
+                self.cells[shared_cells[0]].neighbours = np.append(self.cells[shared_cells[0]].neighbours, shared_cells[1])
+                self.cells[shared_cells[1]].neighbours = np.append(self.cells[shared_cells[1]].neighbours, shared_cells[0])
 
     def evaluate_boundary(self):
         # Determine which cells are boundary cells and the edges between them
@@ -292,8 +306,8 @@ class Tissue():
             else:
                 self.cell_inits.append([2, cell.area])
 
-    def increment_global_iteration(self, title: str, x_lim: int = 0, y_lim: int = 0):
-        if self.global_iteration % 100 == 0:
+    def increment_global_iteration(self, title: str, x_lim: int = 0, y_lim: int = 0, plot_frequency: int = 100):
+        if self.global_iteration % plot_frequency == 0:
             information = f"Iteration: {self.global_iteration}\nCilia force magnitude: {self.flow_magnitude}\nCilia force direction: {self.flow_direction}"
             if self.plot_type == 0:
                 self.plot = plot_tissue(self.cells, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information,)
@@ -310,7 +324,7 @@ class Tissue():
 
         self.global_iteration += 1
 
-    def simulate(self, title: str, iterations: int = 5000):
+    def simulate(self, title: str, iterations: int = 5000, plot_frequency: int = 100):
         plt.ion()
         for i in range(iterations):
             self.force_matrix = self.calculate_force_matrix()
@@ -321,7 +335,9 @@ class Tissue():
             if self.tracking:
                 self.cell_states[self.global_iteration] = self.position_buffer
             self.position_buffer = []
-            self.increment_global_iteration(title)
+
+            self.increment_global_iteration(title, x_lim=self.x, y_lim=self.y, plot_frequency=plot_frequency)
+            #self.evaluate_connectivity()
             self.evaluate_boundary()
             
         if self.tracking:
