@@ -1,5 +1,4 @@
 from tissue import Tissue
-from cell import BasicCell, MulticiliatedCell, BorderCell
 from plotting import *
 
 from scipy.spatial import Delaunay
@@ -7,9 +6,10 @@ import matplotlib.pyplot as plt
 import json
 
 class LoadedTissue():
-    def __init__(self, parameters: dict, cell_inits: list, cell_states: dict, force_states: dict):
+    def __init__(self, parameters: dict, cell_types: list, target_areas: list, cell_states: dict, force_states: dict):
         self.tissue = Tissue(parameters["x"], parameters["y"], parameters["cilia_density"])
-        self.cell_inits = cell_inits
+        self.tissue.target_areas = np.array(target_areas)
+        self.cell_types = np.array(cell_types)
         self.cell_states = cell_states
         self.force_states = force_states
 
@@ -23,22 +23,17 @@ class LoadedTissue():
         plt.ion()
 
     def load_iteration(self, iteration: int):
-        # FIXME: Very inefficient to reset the cell list every time
-        self.tissue.cells = []
         if self.cell_states[str(iteration)]:
-            cell_positions = self.cell_states[str(iteration)]
-            delaunay = Delaunay(cell_positions)
+            self.tissue.cell_points = np.array(self.cell_states[str(iteration)])
+            self.tissue.num_cells = len(self.tissue.cell_points)
+            self.tissue.cell_types = self.cell_types[:self.tissue.num_cells]
+
+            delaunay = Delaunay(self.tissue.cell_points)
             neighbour_vertices = delaunay.vertex_neighbor_vertices
-            for i in range(len(cell_positions)):
+            self.tissue.adjacency_matrix = np.zeros((self.tissue.num_cells,  self.tissue.num_cells))
+            for i in range(self.tissue.num_cells):
                 neighbours = neighbour_vertices[1][neighbour_vertices[0][i]:neighbour_vertices[0][i+1]]
-                if self.cell_inits[i][0] == 0:
-                    self.tissue.cells.append(BasicCell(i, cell_positions[i][0], cell_positions[i][1], neighbours))
-                    self.tissue.cells[-1].set_area(self.cell_inits[i][1])
-                elif self.cell_inits[i][0] == 1:
-                    self.tissue.cells.append(BorderCell(i, cell_positions[i][0], cell_positions[i][1], neighbours))
-                else:
-                    self.tissue.cells.append(MulticiliatedCell(i, cell_positions[i][0], cell_positions[i][1], neighbours))
-                    self.tissue.cells[-1].set_area(self.cell_inits[i][1])
+                self.tissue.adjacency_matrix[i, neighbours] = 1
 
             # FIXME: This will need to be improved when the force definitions become more complicated
             closest = None
@@ -66,26 +61,35 @@ class LoadedTissue():
     def simulate(self, title: str, iterations: int = 5000):
         self.tissue.simulate(title, iterations)
 
-    def plot_tissue(self, title: str, duration: float):
+    def plot_tissue(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0):
         information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
-        self.tissue.plot = plot_tissue(self.tissue.cells, title, duration, self.tissue.plot, information=information)
+        self.tissue.plot = plot_tissue(self.tissue.cell_points, self.tissue.cell_types, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information)
 
-    def plot_springs(self, title: str, duration: float):
+    def plot_springs(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0):
         information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
-        self.tissue.plot = plot_springs(self.tissue.cells, title, duration, self.tissue.plot, information=information)
+        self.tissue.plot = plot_springs(self.tissue.cell_points, self.tissue.cell_types, self.tissue.adjacency_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information)
 
-    def plot_force_vectors(self, title: str, duration: float):
+    def plot_force_vectors(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0):
         information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
-        force_matrix = self.tissue.calculate_force_matrix()
-        self.tissue.plot = plot_force_vectors(self.tissue.cells, force_matrix, title, duration, self.tissue.plot, information=information)
+        self.tissue.calculate_force_matrix()
+        self.tissue.plot = plot_force_vectors(self.tissue.cell_points, self.tissue.cell_types, self.tissue.force_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information)
 
-    def plot_major_axes(self, title: str, duration: float):
+    def plot_major_axes(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0):
         information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
-        self.tissue.plot = plot_major_axes(self.tissue.cells, title, duration, self.tissue.plot, information=information)
+        self.tissue.plot = plot_major_axes(self.tissue.cell_points, self.tissue.cell_types, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information)
 
-    def plot_avg_major_axes(self, title: str, duration: float):
+    def plot_avg_major_axes(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0):
         information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
-        self.tissue.plot = plot_avg_major_axes(self.tissue.cells, title, duration, self.tissue.plot, information=information)
+        self.tissue.plot = plot_avg_major_axes(self.tissue.cell_points, self.tissue.cell_types, self.tissue.adjacency_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information)
+
+    def plot_area_deltas(self, title: str, duration: float):
+        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        self.tissue.plot = plot_area_delta(self.tissue.cell_points, self.tissue.cell_types, self.tissue.target_cell_area, title, duration, self.tissue.plot, information=information)
+        
+    def plot_neighbour_histogram(self, title: str, duration: float):
+        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        self.tissue.plot = plot_neighbour_histogram(self.tissue.adjacency_matrix, title, duration, self.tissue.plot, information=information)
+
 
 class Manager():
     def __init__(self):
@@ -96,11 +100,12 @@ class Manager():
             json_data = json.load(input_file)
 
             parameters = json_data["parameters"]
-            cell_inits = json_data["cell_inits"]
+            cell_types = json_data["cell_types"]
+            target_areas = json_data["target_areas"]
             cell_states = json_data["cell_states"]
             force_states = json_data["force_states"]
 
-            self.tissues.append(LoadedTissue(parameters, cell_inits, cell_states, force_states))
+            self.tissues.append(LoadedTissue(parameters, cell_types, target_areas, cell_states, force_states))
             
     def animate_tissue(self, title: str, index: int, plot_type: int, start_iteration: int = 0, end_iteration: int = 0, step=100):
         tissue = self.tissues[index]
@@ -123,11 +128,14 @@ class Manager():
                 tissue.plot_major_axes(title, duration=0.1)
             elif plot_type == 4:
                 tissue.plot_avg_major_axes(title, duration=0.1)
-
+            elif plot_type == 5:
+                tissue.plot_area_delta(title, duration=0.1)
+            elif plot_type == 6:
+                tissue.plot_neighbour_histogram(title, duration=0.1)
 
     
 # TESTING
 manager = Manager()
 manager.read_from_file("./test.json")
-manager.animate_tissue("Animating Tissue Progression", index=0, plot_type=2, step=10)
+manager.animate_tissue("Animating Tissue Progression", index=0, plot_type=6, step=10)
 
