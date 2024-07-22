@@ -6,7 +6,7 @@ import matplotlib.cm as cm
 import numpy as np
 from scipy.spatial import Voronoi, Delaunay
 
-def plot_tissue(points: np.ndarray, cell_types: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
+def plot_tissue(points: np.ndarray, cell_types: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = "", auto: bool = True):
     basic_indices = np.where(cell_types == 0)[0]
     boundary_indices = np.where(cell_types == 1)[0]
     boundary_points = points[boundary_indices]
@@ -19,6 +19,7 @@ def plot_tissue(points: np.ndarray, cell_types: np.ndarray, title: str, duration
         information_box = None
     else:
         fig, ax, information_box = plot[0], plot[1], plot[3]
+        ax.clear()
 
     for basic_index in basic_indices:
         region = voronoi.regions[voronoi.point_region[basic_index]]
@@ -48,14 +49,14 @@ def plot_tissue(points: np.ndarray, cell_types: np.ndarray, title: str, duration
         plt.ylim([0, y_lim])
 
     plt.title(title)
-    plt.show()
-    plt.pause(duration)
 
-    ax.clear()
+    if auto:
+        plt.show()
+        plt.pause(duration)
     
     return (fig, ax, None, information_box)
 
-def plot_springs(points: np.ndarray, cell_types: np.ndarray, adjacency_matrix: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
+def plot_springs(points: np.ndarray, cell_types: np.ndarray, adjacency_matrix: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = "", auto: bool = True):
     basic_indices = np.where(cell_types == 0)[0]
     boundary_indices = np.where(cell_types == 1)[0]
     boundary_points = points[boundary_indices]
@@ -68,6 +69,7 @@ def plot_springs(points: np.ndarray, cell_types: np.ndarray, adjacency_matrix: n
         information_box = None
     else:
         fig, ax, information_box = plot[0], plot[1], plot[3]
+        ax.clear()
 
     if not plot[2]:
         colourbar = None
@@ -124,14 +126,14 @@ def plot_springs(points: np.ndarray, cell_types: np.ndarray, adjacency_matrix: n
         plt.ylim([0, y_lim])
 
     plt.title(title)
-    plt.show()
-    plt.pause(duration)
 
-    ax.clear()
-    
+    if auto:
+        plt.show()
+        plt.pause(duration)
+
     return (fig, ax, colourbar, information_box)
 
-def plot_force_vectors(points: np.ndarray, cell_types: np.ndarray, force_matrix: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
+def plot_force_vectors(points: np.ndarray, cell_types: np.ndarray, force_matrix: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = "", auto: bool = True):
     basic_indices = np.where(cell_types == 0)[0]
     boundary_indices = np.where(cell_types == 1)[0]
     boundary_points = points[boundary_indices]
@@ -144,6 +146,7 @@ def plot_force_vectors(points: np.ndarray, cell_types: np.ndarray, force_matrix:
         information_box = None
     else:
         fig, ax, information_box = plot[0], plot[1], plot[3]
+        ax.clear()
 
     for basic_index in basic_indices:
         region = voronoi.regions[voronoi.point_region[basic_index]]
@@ -176,14 +179,14 @@ def plot_force_vectors(points: np.ndarray, cell_types: np.ndarray, force_matrix:
         plt.ylim([0, y_lim])
 
     plt.title(title)
-    plt.show()
-    plt.pause(duration)
 
-    ax.clear()
-    
+    if auto:
+        plt.show()
+        plt.pause(duration)
+ 
     return (fig, ax, None, information_box)
 
-def plot_major_axes(points: np.ndarray, cell_types: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
+def plot_major_axes(points: np.ndarray, cell_types: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = "", auto: bool = True):
     basic_indices = np.where(cell_types == 0)[0]
     boundary_indices = np.where(cell_types == 1)[0]
     boundary_points = points[boundary_indices]
@@ -196,6 +199,7 @@ def plot_major_axes(points: np.ndarray, cell_types: np.ndarray, title: str, dura
         information_box = None
     else:
         fig, ax, information_box = plot[0], plot[1], plot[3]    
+        ax.clear()
 
     for basic_index in basic_indices:
         region = voronoi.regions[voronoi.point_region[basic_index]] 
@@ -255,14 +259,14 @@ def plot_major_axes(points: np.ndarray, cell_types: np.ndarray, title: str, dura
         plt.ylim([0, y_lim])
 
     plt.title(title)
-    plt.show()
-    plt.pause(duration)
 
-    ax.clear()
+    if auto:
+        plt.show()
+        plt.pause(duration)
     
     return (fig, ax, None, information_box)
 
-def plot_avg_major_axes(points: np.ndarray, cell_types: np.ndarray, adjacency_matrix: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = ""):
+def plot_avg_major_axes(points: np.ndarray, cell_types: np.ndarray, adjacency_matrix: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = "", auto: bool = True):
     basic_indices = np.where(cell_types == 0)[0]
     boundary_indices = np.where(cell_types == 1)[0]
     boundary_points = points[boundary_indices]
@@ -275,6 +279,7 @@ def plot_avg_major_axes(points: np.ndarray, cell_types: np.ndarray, adjacency_ma
         information_box = None
     else:
         fig, ax, information_box = plot[0], plot[1], plot[3]    
+        ax.clear()
        
     for basic_index in basic_indices:
         region = voronoi.regions[voronoi.point_region[basic_index]]
@@ -348,14 +353,14 @@ def plot_avg_major_axes(points: np.ndarray, cell_types: np.ndarray, adjacency_ma
         plt.ylim([0, y_lim])
 
     plt.title(title)
-    plt.show()
-    plt.pause(duration)
-
-    ax.clear()
+    
+    if auto:
+        plt.show()
+        plt.pause(duration)
     
     return (fig, ax, None, information_box)
 
-def plot_area_delta(points: np.ndarray, cell_types: np.ndarray, target_area: float, title: str, duration: float, plot: tuple = (None, None), information: str = ""):
+def plot_area_delta(points: np.ndarray, cell_types: np.ndarray, target_area: float, title: str, duration: float, plot: tuple = (None, None), information: str = "", auto: bool = True):
     voronoi = Voronoi(points)
 
     area_diffs = []
@@ -369,6 +374,7 @@ def plot_area_delta(points: np.ndarray, cell_types: np.ndarray, target_area: flo
         information_box = None
     else:
         fig, ax, information_box = plot[0], plot[1], plot[3]
+        ax.clear()
 
     ax.hist(area_diffs)
 
@@ -382,23 +388,27 @@ def plot_area_delta(points: np.ndarray, cell_types: np.ndarray, target_area: flo
         information_box.set_text(information)
 
     plt.title(title)
-    plt.show()
-    plt.pause(duration)
 
-    ax.clear()
+    if auto:
+        plt.show()
+        plt.pause(duration)
     
     return (fig, ax, None, information_box)
 
-def plot_neighbour_histogram(adjacency_matrix: np.ndarray, title: str, duration: float, plot: tuple = (None, None), information: str = ""):
+def plot_neighbour_histogram(adjacency_matrix: np.ndarray, title: str, duration: float, plot: tuple = (None, None), information: str = "", auto: bool = True):
     connectivity = np.sum(adjacency_matrix, axis=0)
+    disc_size = np.diff(np.unique(connectivity)).min()
+    left = connectivity.min() - float(disc_size) / 2
+    right = connectivity.max() + float(disc_size) / 2
 
     if not plot[0] and not plot[1]:
         fig, ax = plt.subplots()
         information_box = None
     else:
         fig, ax, information_box = plot[0], plot[1], plot[3]
+        ax.clear()
 
-    ax.hist(connectivity)
+    ax.hist(connectivity, np.arange(left, right + disc_size, disc_size))
 
     fig.set_figwidth(8)
     fig.set_figheight(8)
@@ -410,12 +420,37 @@ def plot_neighbour_histogram(adjacency_matrix: np.ndarray, title: str, duration:
         information_box.set_text(information)
 
     plt.title(title)
-    plt.show()
-    plt.pause(duration)
 
-    ax.clear()
+    if auto:
+        plt.show()
+        plt.pause(duration)
     
     return (fig, ax, None, information_box)
 
+def plot_shape_factor_histogram(shape_factors: np.ndarray, title: str, duration: float, plot: tuple = (None, None), information: str = "", auto: bool = True):
+    if not plot[0] and not plot[1]:
+        fig, ax = plt.subplots()
+        information_box = None
+    else:
+        fig, ax, information_box = plot[0], plot[1], plot[3]
+        ax.clear()
 
+    ax.hist(shape_factors)
+
+    fig.set_figwidth(8)
+    fig.set_figheight(8)
+    
+    if not information_box:
+        information_dict = dict(boxstyle="round", facecolor="white", alpha=0.5)
+        information_box = fig.text(0.05, 0.95, information, transform=ax.transAxes, fontsize=10, verticalalignment="top", bbox=information_dict)
+    else:
+        information_box.set_text(information)
+
+    plt.title(title)
+    
+    if auto:
+        plt.show()
+        plt.pause(duration)
+    
+    return (fig, ax, None, information_box)
 

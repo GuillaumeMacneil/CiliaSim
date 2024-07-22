@@ -10,8 +10,8 @@ def main():
     tissue.set_plot_force_vector()
     tissue.simulate(f"Tissue annealing.", 1000, 100)
     tissue.set_flow([0, 1], 1)
-    tissue.simulate("Tissue dynamics with cilia force.", 5000, 1000)
-    tissue.write_to_file("./test.json")
+    tissue.simulate("Tissue dynamics with cilia force.", 10000, 1000)
+    tissue.write_to_file("./saved_simulations/20x20_rand_center_1up.json")
 
 #cProfile.run('main()', sort="tottime")
 main()

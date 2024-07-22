@@ -176,6 +176,12 @@ class Tissue():
     def set_plot_area_deltas(self):
         self.plot_type = 5
 
+    def set_plot_neighbour_histogram(self):
+        self.plot_type = 6
+
+    def set_plot_shape_factor_histogram(self):
+        self.plot_type = 7
+
     def calculate_force_matrix(self, tension_only: bool = False):
         delaunay = Delaunay(self.cell_points)
         voronoi = Voronoi(self.cell_points)
@@ -257,6 +263,18 @@ class Tissue():
                 external_forces = force_distribution[:, np.newaxis] * differences
                 self.force_matrix[i, neighbours] += external_forces 
        
+    def calculate_shape_factors(self):
+        voronoi = Voronoi(self.cell_points)
+        non_boundary_cells = np.where(self.cell_types != 1)[0]
+        shape_factors = []
+        for cell in non_boundary_cells:
+            vertices = voronoi.vertices[voronoi.regions[voronoi.point_region[cell]]]
+            area = polygon_area(vertices)
+            perimeter = polygon_perimeter(vertices)
+            shape_factors.append(perimeter / np.sqrt(area))
+            
+        return np.array(shape_factors)
+
     def evaluate_connectivity(self):
         self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells))
 
@@ -349,6 +367,10 @@ class Tissue():
                 self.plot = plot_avg_major_axes(self.cell_points, self.cell_types, self.adjacency_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 5:
                 self.plot = plot_area_delta(self.cell_points, self.cell_types, self.target_cell_area, title, 0.5, self.plot, information=information)
+            elif self.plot_type == 6:
+                self.plot = plot_neighbour_histogram(self.adjacency_matrix, title, 0.5, self.plot, information=information)
+            elif self.plot_type == 7:
+                self.plot = plot_shape_factor_histogram(self.calculate_shape_factors(), title, 0.5, self.plot, information=information)
 
         self.global_iteration += 1
 
