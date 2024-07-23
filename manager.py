@@ -35,6 +35,20 @@ class LoadedTissue():
                 neighbours = neighbour_vertices[1][neighbour_vertices[0][i]:neighbour_vertices[0][i+1]]
                 self.tissue.adjacency_matrix[i, neighbours] = 1
 
+            # Boundary vertex conditions
+            boundary_cells = np.where(self.tissue.cell_types == 1)[0]
+            for cell in boundary_cells:
+                cell_neighbours = np.where(self.tissue.adjacency_matrix[cell] == 1)
+                boundary_neighbours = np.intersect1d(cell_neighbours, boundary_cells)
+                differences = self.tissue.cell_points[boundary_neighbours] - self.tissue.cell_points[cell]
+                distances = np.linalg.norm(differences, axis=1)
+                sorted_boundary_neighbours = boundary_neighbours[np.argsort(distances)]
+                furthest_neighbours = sorted_boundary_neighbours[2:]
+
+                for neighbour in furthest_neighbours:
+                    self.tissue.adjacency_matrix[cell, neighbour] = 0
+                    self.tissue.adjacency_matrix[neighbour, cell] = 0
+
             # FIXME: This will need to be improved when the force definitions become more complicated
             closest = None
             for key in self.force_states.keys():
@@ -99,6 +113,8 @@ class LoadedTissue():
 class Manager():
     def __init__(self):
         self.tissues = []
+        # FIXME: This should be specific to each tissue
+        self.net_energy = []
 
     def read_from_file(self, path: str):
         with open(path, "r") as input_file:
@@ -109,15 +125,20 @@ class Manager():
             target_areas = json_data["target_areas"]
             cell_states = json_data["cell_states"]
             force_states = json_data["force_states"]
+            self.net_energy = json_data["net_energy"]
 
             self.tissues.append(LoadedTissue(parameters, cell_types, target_areas, cell_states, force_states))
 
-    def plot_energy_progression(self, title: str, index: int):
-        tissue = self.tissues[index]
-        for iteration in range(tissue.min_it, tissue.max_it):
-            # Calculate 1/2 sum (A - A_0)^2  + (P - P_0)^2 
-            pass
-            
+    def plot_energy_progression(self, title: str):
+        fig, ax = plt.subplots()
+        ax.plot(np.arange(0, len(self.net_energy)), self.net_energy)
+
+        fig.set_figheight(8)
+        fig.set_figwidth(8)
+        
+        plt.title(title)
+        plt.show()
+
     def interactive_tissue(self, title: str, index: int, plot_type: int, start_iteration: int = 0, end_iteration: int = 0):
         def select_plot(plot_type: int):
             if plot_type == 0:
@@ -218,6 +239,7 @@ class Manager():
     
 # TESTING
 manager = Manager()
-manager.read_from_file("./saved_simulations/20x20_hex_center_1up.json")
-manager.interactive_tissue("Animating Tissue Progression", index=0, plot_type=7)
-#manager.animate_tissue("Animating Tissue Progression", index=0, plot_type=7)
+manager.read_from_file("./saved_simulations/test2.json")
+#manager.interactive_tissue("Animating Tissue Progression", index=0, plot_type=2)
+#manager.animate_tissue("Animating Tissue Progression", index=0, plot_type=2)
+manager.plot_energy_progression("Net Energy Throughout Simulation")

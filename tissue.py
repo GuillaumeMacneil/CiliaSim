@@ -32,7 +32,9 @@ class Tissue():
 
         self.target_spring_length = 1
         self.target_cell_area = 1
-        self.critical_length_delta = 0.5
+        self.critical_length_delta = 0.8
+
+        self.net_energy = np.array([])
 
         # State encoding variables
         self.tracking = False
@@ -227,7 +229,9 @@ class Tissue():
         
         self.force_matrix = np.zeros((self.num_cells, self.num_cells, 2))
         self.distance_matrix = np.zeros((self.num_cells, self.num_cells))
-      
+
+        net_energy = 0 
+        visited = []
         for i in range(self.num_cells):
             # Calculate spring forces
             neighbours = np.where(self.adjacency_matrix[i] == 1)
@@ -235,6 +239,11 @@ class Tissue():
             differences = neighbour_positions - self.cell_points[i]
             distances = np.linalg.norm(differences, axis=1)
             unit_vectors = differences / distances[:, np.newaxis]
+
+            energy_distances = distances[~np.isin(neighbours, visited)[0]]
+            energy_contribution = 0.5 * (energy_distances - self.target_spring_length) ** 2
+            net_energy += np.sum(energy_contribution)
+            visited.append(i)
 
             force_magnitudes = distances[:, np.newaxis] - self.target_spring_length
 
@@ -248,7 +257,8 @@ class Tissue():
                 # Calculate pressure forces
                 region_index = voronoi.point_region[i]
                 area = polygon_area(voronoi.vertices[voronoi.regions[region_index]])
-                area_difference = self.target_areas[i] - area
+                area_difference = (self.target_areas[i] - area)
+                net_energy += 0.5 * area_difference ** 2
 
                 self.force_matrix[i, neighbours] += area_difference * unit_vectors
                 self.force_matrix[neighbours, i] += area_difference * unit_vectors
@@ -262,6 +272,8 @@ class Tissue():
 
                 external_forces = force_distribution[:, np.newaxis] * differences
                 self.force_matrix[i, neighbours] += external_forces 
+
+        self.net_energy = np.append(self.net_energy, net_energy)
        
     def calculate_shape_factors(self):
         voronoi = Voronoi(self.cell_points)
@@ -389,7 +401,7 @@ class Tissue():
             self.evaluate_boundary()
             
     def write_to_file(self, path: str):
-        json_data = {"parameters": {"x": self.x, "y": self.y, "cilia_density": self.density}, "cell_types": self.cell_types.tolist(), "target_areas": self.target_areas.tolist(), "force_states": self.force_states, "cell_states": self.cell_states}
+        json_data = {"parameters": {"x": self.x, "y": self.y, "cilia_density": self.density}, "cell_types": self.cell_types.tolist(), "target_areas": self.target_areas.tolist(), "force_states": self.force_states, "cell_states": self.cell_states, "net_energy": self.net_energy.tolist()}
         json_object = json.dumps(json_data)
 
         with open(path, "w") as output_file:
