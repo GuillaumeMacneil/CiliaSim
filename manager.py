@@ -239,7 +239,7 @@ class Manager():
     
 # TESTING
 manager = Manager()
-manager.read_from_file("./saved_simulations/test2.json")
-#manager.interactive_tissue("Animating Tissue Progression", index=0, plot_type=2)
-#manager.animate_tissue("Animating Tissue Progression", index=0, plot_type=2)
-manager.plot_energy_progression("Net Energy Throughout Simulation")
+manager.read_from_file("./saved_simulations/test11.json")
+manager.interactive_tissue("Animating Tissue Progression", index=0, plot_type=1)
+#manager.animate_tissue("Animating Tissue Progression", index=0, plot_type=1)
+#manager.plot_energy_progression("Net Energy Throughout Simulation")

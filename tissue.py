@@ -4,7 +4,6 @@ from plotting import *
 import numpy as np
 from scipy.spatial import Voronoi, Delaunay
 from scipy.stats import qmc
-from collections import defaultdict
 import matplotlib.pyplot as plt
 import json
 
@@ -32,7 +31,7 @@ class Tissue():
 
         self.target_spring_length = 1
         self.target_cell_area = 1
-        self.critical_length_delta = 0.8
+        self.critical_length_delta = 0.2
 
         self.net_energy = np.array([])
 
@@ -247,7 +246,7 @@ class Tissue():
 
             force_magnitudes = distances[:, np.newaxis] - self.target_spring_length
 
-            self.force_matrix[i, neighbours] += force_magnitudes * unit_vectors
+            self.force_matrix[i, neighbours] -= force_magnitudes * unit_vectors
             self.distance_matrix[i, neighbours] = distances
 
             if self.cell_types[i] == 1 and not tension_only:
@@ -260,8 +259,8 @@ class Tissue():
                 area_difference = (self.target_areas[i] - area)
                 net_energy += 0.5 * area_difference ** 2
 
-                self.force_matrix[i, neighbours] += area_difference * unit_vectors
-                self.force_matrix[neighbours, i] += area_difference * unit_vectors
+                self.force_matrix[i, neighbours] += area_difference / len(unit_vectors) * unit_vectors
+                self.force_matrix[neighbours, i] += area_difference / len(unit_vectors) * unit_vectors
 
             if self.cell_types[i] == 2 and not tension_only:
                 # Calculate external force contributions
@@ -274,7 +273,7 @@ class Tissue():
                 self.force_matrix[i, neighbours] += external_forces 
 
         self.net_energy = np.append(self.net_energy, net_energy)
-       
+
     def calculate_shape_factors(self):
         voronoi = Voronoi(self.cell_points)
         non_boundary_cells = np.where(self.cell_types != 1)[0]
@@ -390,14 +389,13 @@ class Tissue():
         plt.ion()
         for i in range(iterations):
             self.calculate_force_matrix(tension_only)
-            total_force = np.sum(self.force_matrix, axis=1)
+            total_force = np.sum(self.force_matrix, axis=0)
             self.cell_points += total_force * 0.95 * 0.01
 
             if self.tracking:
                 self.cell_states[self.global_iteration] = self.cell_points.tolist()
 
             self.increment_global_iteration(title, x_lim=self.x, y_lim=self.y, plot_frequency=plot_frequency)
-            #self.evaluate_connectivity()
             self.evaluate_boundary()
             
     def write_to_file(self, path: str):
