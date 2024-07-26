@@ -162,7 +162,8 @@ def plot_force_vectors(points: np.ndarray, cell_types: np.ndarray, force_matrix:
 
     ax.scatter(boundary_points[:, 0], boundary_points[:, 1], s=20, color="green")   
 
-    force_vector = np.array([np.sum(force_matrix[point_index], axis=0) for point_index in range(len(points))])
+    force_vector = np.array([np.sum(force_matrix[:, point_index], axis=0) for point_index in range(len(points))])
+    print(force_vector.shape)
     ax.quiver(points[:, 0], points[:, 1], force_vector[:, 0], force_vector[:, 1])
 
     fig.set_figwidth(8)

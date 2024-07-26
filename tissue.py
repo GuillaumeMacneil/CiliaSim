@@ -30,7 +30,7 @@ class Tissue():
         self.distance_matrix = np.zeros((self.num_cells, self.num_cells))
 
         self.target_spring_length = 1
-        self.target_cell_area = 1
+        self.target_cell_area = 1 
         self.critical_length_delta = 0.2
 
         self.net_energy = np.array([])
@@ -259,18 +259,19 @@ class Tissue():
                 area_difference = (self.target_areas[i] - area)
                 net_energy += 0.5 * area_difference ** 2
 
-                self.force_matrix[i, neighbours] += area_difference / len(unit_vectors) * unit_vectors
-                self.force_matrix[neighbours, i] += area_difference / len(unit_vectors) * unit_vectors
+                self.force_matrix[i, neighbours] += area_difference / len(neighbours) * unit_vectors
+                self.force_matrix[neighbours, i] += area_difference / len(neighbours) * unit_vectors
 
             if self.cell_types[i] == 2 and not tension_only:
                 # Calculate external force contributions
-                flow = self.flow_direction * self.flow_magnitude
+                #flow = self.flow_direction * self.flow_magnitude
                 
-                pinv_differences = np.linalg.pinv(differences.T)
-                force_distribution = np.dot(pinv_differences, flow)
+                #pinv_differences = np.linalg.pinv(differences.T)
+                #force_distribution = np.dot(pinv_differences, flow)
 
-                external_forces = force_distribution[:, np.newaxis] * differences
-                self.force_matrix[i, neighbours] += external_forces 
+                #external_forces = force_distribution[:, np.newaxis] * differences
+                #self.force_matrix[i, neighbours] += external_forces 
+                self.force_matrix[i, i] = self.flow_magnitude * self.flow_direction
 
         self.net_energy = np.append(self.net_energy, net_energy)
 
@@ -285,33 +286,6 @@ class Tissue():
             shape_factors.append(perimeter / np.sqrt(area))
             
         return np.array(shape_factors)
-
-    def evaluate_connectivity(self):
-        self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells))
-
-        delaunay = Delaunay(self.cell_points)
-        neighbour_vertices = delaunay.vertex_neighbor_vertices
-        for i in range(self.num_cells):
-            neighbours = neighbour_vertices[1][neighbour_vertices[0][i]:neighbour_vertices[0][i+1]]
-            self.adjacency_matrix[i, neighbours] = 1
-
-        critical_edges = np.where(self.distance_matrix - self.target_spring_length > self.critical_length_delta)
-        if critical_edges[0].size == 0:
-            return None
-
-        edge_pairs = np.column_stack(critical_edges)
-        sorted_pairs = np.sort(edge_pairs, axis=1)
-        unique_pairs = np.unique(sorted_pairs, axis=0)
-
-        for a, b in unique_pairs:
-            shared_cells = np.intersect1d(np.where(self.adjacency_matrix[a] == 1)[0], np.where(self.adjacency_matrix[b] == 1)[0])
-            if len(shared_cells) == 2:
-                #new_length = np.linalg.norm(shared_cells[1] - shared_cells[0])
-                #if new_length < self.distance_matrix[a, b]:
-                self.adjacency_matrix[a, b] = 0
-                self.adjacency_matrix[b, a] = 0
-                self.adjacency_matrix[shared_cells[0], shared_cells[1]] = 1
-                self.adjacency_matrix[shared_cells[1], shared_cells[0]] = 1
 
     def evaluate_boundary(self):
         # Determine which cells are boundary cells and the edges between them
@@ -395,7 +369,8 @@ class Tissue():
             if self.tracking:
                 self.cell_states[self.global_iteration] = self.cell_points.tolist()
 
-            self.increment_global_iteration(title, x_lim=self.x, y_lim=self.y, plot_frequency=plot_frequency)
+            #self.increment_global_iteration(title, x_lim=self.x, y_lim=self.y, plot_frequency=plot_frequency)
+            self.increment_global_iteration(title, plot_frequency=plot_frequency)
             self.evaluate_boundary()
             
     def write_to_file(self, path: str):
