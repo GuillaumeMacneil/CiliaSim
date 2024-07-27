@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolours
 import matplotlib.cm as cm
 import numpy as np
-from scipy.spatial import Voronoi, Delaunay
+from scipy.spatial import Voronoi
 
 def plot_tissue(points: np.ndarray, cell_types: np.ndarray, title: str, duration: float, plot: tuple = (None, None), x_lim: int = 0, y_lim: int = 0, information: str = "", auto: bool = True):
     basic_indices = np.where(cell_types == 0)[0]
@@ -48,7 +48,7 @@ def plot_tissue(points: np.ndarray, cell_types: np.ndarray, title: str, duration
         plt.xlim([0, x_lim])
         plt.ylim([0, y_lim])
 
-    plt.title(title)
+    ax.set_title(title)
 
     if auto:
         plt.show()
@@ -125,7 +125,7 @@ def plot_springs(points: np.ndarray, cell_types: np.ndarray, adjacency_matrix: n
         plt.xlim([0, x_lim])
         plt.ylim([0, y_lim])
 
-    plt.title(title)
+    ax.set_title(title)
 
     if auto:
         plt.show()
@@ -163,7 +163,6 @@ def plot_force_vectors(points: np.ndarray, cell_types: np.ndarray, force_matrix:
     ax.scatter(boundary_points[:, 0], boundary_points[:, 1], s=20, color="green")   
 
     force_vector = np.array([np.sum(force_matrix[:, point_index], axis=0) for point_index in range(len(points))])
-    print(force_vector.shape)
     ax.quiver(points[:, 0], points[:, 1], force_vector[:, 0], force_vector[:, 1])
 
     fig.set_figwidth(8)
@@ -179,7 +178,7 @@ def plot_force_vectors(points: np.ndarray, cell_types: np.ndarray, force_matrix:
         plt.xlim([0, x_lim])
         plt.ylim([0, y_lim])
 
-    plt.title(title)
+    ax.set_title(title)
 
     if auto:
         plt.show()
@@ -259,7 +258,7 @@ def plot_major_axes(points: np.ndarray, cell_types: np.ndarray, title: str, dura
         plt.xlim([0, x_lim])
         plt.ylim([0, y_lim])
 
-    plt.title(title)
+    ax.set_title(title)
 
     if auto:
         plt.show()
@@ -353,7 +352,7 @@ def plot_avg_major_axes(points: np.ndarray, cell_types: np.ndarray, adjacency_ma
         plt.xlim([0, x_lim])
         plt.ylim([0, y_lim])
 
-    plt.title(title)
+    ax.set_title(title)
     
     if auto:
         plt.show()
@@ -388,7 +387,7 @@ def plot_area_delta(points: np.ndarray, cell_types: np.ndarray, target_area: flo
     else:
         information_box.set_text(information)
 
-    plt.title(title)
+    ax.set_title(title)
 
     if auto:
         plt.show()
@@ -420,7 +419,7 @@ def plot_neighbour_histogram(adjacency_matrix: np.ndarray, title: str, duration:
     else:
         information_box.set_text(information)
 
-    plt.title(title)
+    ax.set_title(title)
 
     if auto:
         plt.show()
@@ -447,7 +446,7 @@ def plot_shape_factor_histogram(shape_factors: np.ndarray, title: str, duration:
     else:
         information_box.set_text(information)
 
-    plt.title(title)
+    ax.set_title(title)
     
     if auto:
         plt.show()

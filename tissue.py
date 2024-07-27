@@ -30,7 +30,7 @@ class Tissue():
         self.distance_matrix = np.zeros((self.num_cells, self.num_cells))
 
         self.target_spring_length = 1
-        self.target_cell_area = 1 
+        self.target_cell_area = np.sqrt(3) / 2
         self.critical_length_delta = 0.2
 
         self.net_energy = np.array([])
@@ -226,8 +226,9 @@ class Tissue():
                 self.adjacency_matrix[cell, neighbour] = 0
                 self.adjacency_matrix[neighbour, cell] = 0
         
-        self.force_matrix = np.zeros((self.num_cells, self.num_cells, 2))
+        magnitude_matrix = np.zeros((self.num_cells, self.num_cells))
         self.distance_matrix = np.zeros((self.num_cells, self.num_cells))
+        unit_vector_matrix = np.zeros((self.num_cells, self.num_cells, 2))
 
         net_energy = 0 
         visited = []
@@ -239,39 +240,41 @@ class Tissue():
             distances = np.linalg.norm(differences, axis=1)
             unit_vectors = differences / distances[:, np.newaxis]
 
+            self.distance_matrix[i, neighbours] = distances
+            unit_vector_matrix[i, neighbours] = unit_vectors
+
             energy_distances = distances[~np.isin(neighbours, visited)[0]]
             energy_contribution = 0.5 * (energy_distances - self.target_spring_length) ** 2
             net_energy += np.sum(energy_contribution)
             visited.append(i)
 
-            force_magnitudes = distances[:, np.newaxis] - self.target_spring_length
+            force_magnitudes = self.target_spring_length - distances
 
-            self.force_matrix[i, neighbours] -= force_magnitudes * unit_vectors
-            self.distance_matrix[i, neighbours] = distances
+            magnitude_matrix[i, neighbours] += force_magnitudes
 
-            if self.cell_types[i] == 1 and not tension_only:
-                self.force_matrix[i, neighbours] /= 10
+        magnitude_matrix = np.clip(magnitude_matrix, -self.critical_length_delta, None)
+
+        if not tension_only:
+            for i in np.where(self.cell_types == 1)[0]:
+                neighbours = np.where(self.adjacency_matrix[i] == 1)
+                magnitude_matrix[i, neighbours] /= 10
             
-            if self.cell_types[i] != 1 and not tension_only:
+            for i in np.where(self.cell_types != 1)[0]:
                 # Calculate pressure forces
+                neighbours = np.where(self.adjacency_matrix[i] == 1)
                 region_index = voronoi.point_region[i]
                 area = polygon_area(voronoi.vertices[voronoi.regions[region_index]])
                 area_difference = (self.target_areas[i] - area)
                 net_energy += 0.5 * area_difference ** 2
 
-                self.force_matrix[i, neighbours] += area_difference / len(neighbours) * unit_vectors
-                self.force_matrix[neighbours, i] += area_difference / len(neighbours) * unit_vectors
+                magnitude_matrix[i, neighbours] += area_difference / len(neighbours)
+                magnitude_matrix[neighbours, i] += area_difference / len(neighbours)
 
-            if self.cell_types[i] == 2 and not tension_only:
-                # Calculate external force contributions
-                #flow = self.flow_direction * self.flow_magnitude
-                
-                #pinv_differences = np.linalg.pinv(differences.T)
-                #force_distribution = np.dot(pinv_differences, flow)
+        self.force_matrix = magnitude_matrix.T[:, :, np.newaxis] * unit_vector_matrix
 
-                #external_forces = force_distribution[:, np.newaxis] * differences
-                #self.force_matrix[i, neighbours] += external_forces 
-                self.force_matrix[i, i] = self.flow_magnitude * self.flow_direction
+        # Calculate external force contributions
+        for m_index in np.where(self.cell_types == 2)[0]:
+            self.force_matrix[m_index, m_index] = self.flow_magnitude * self.flow_direction
 
         self.net_energy = np.append(self.net_energy, net_energy)
 
@@ -369,8 +372,8 @@ class Tissue():
             if self.tracking:
                 self.cell_states[self.global_iteration] = self.cell_points.tolist()
 
-            #self.increment_global_iteration(title, x_lim=self.x, y_lim=self.y, plot_frequency=plot_frequency)
-            self.increment_global_iteration(title, plot_frequency=plot_frequency)
+            self.increment_global_iteration(title, x_lim=self.x, y_lim=self.y, plot_frequency=plot_frequency)
+            #self.increment_global_iteration(title, plot_frequency=plot_frequency)
             self.evaluate_boundary()
             
     def write_to_file(self, path: str):

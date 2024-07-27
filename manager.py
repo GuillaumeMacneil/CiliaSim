@@ -3,7 +3,7 @@ from plotting import *
 
 from scipy.spatial import Delaunay
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider
+from matplotlib.widgets import Slider, Button
 import json
 
 class LoadedTissue():
@@ -109,6 +109,8 @@ class LoadedTissue():
         shape_factors = self.tissue.calculate_shape_factors()
         self.tissue.plot = plot_shape_factor_histogram(shape_factors, title, duration, self.tissue.plot, information=information, auto=auto)
 
+# GLOBAL VARIABLE:
+plot_type = 0
 
 class Manager():
     def __init__(self):
@@ -139,7 +141,7 @@ class Manager():
         plt.title(title)
         plt.show()
 
-    def interactive_tissue(self, title: str, index: int, plot_type: int, start_iteration: int = 0, end_iteration: int = 0):
+    def interactive_tissue(self, title: str, index: int, start_iteration: int = 0, end_iteration: int = 0):
         def select_plot(plot_type: int):
             if plot_type == 0:
                 tissue.plot_tissue(title, duration=0.1, auto=False)
@@ -152,7 +154,7 @@ class Manager():
             elif plot_type == 4:
                 tissue.plot_avg_major_axes(title, duration=0.1, auto=False)
             elif plot_type == 5:
-                tissue.plot_area_delta(title, duration=0.1, auto=False)
+                tissue.plot_area_deltas(title, duration=0.1, auto=False)
             elif plot_type == 6:
                 tissue.plot_neighbour_histogram(title, duration=0.1, auto=False)
             elif plot_type == 7:
@@ -169,9 +171,10 @@ class Manager():
         tissue.load_iteration(start_iteration)
         select_plot(plot_type)
 
-        plt.subplots_adjust(left=0.1, bottom=0.15)
+        plt.subplots_adjust(left=0.1, bottom=0.25)
 
-        slider_axis = tissue.tissue.plot[0].add_axes([0.15, 0.05, 0.65, 0.03])
+        slider_axis = tissue.tissue.plot[0].add_axes([0.15, 0.15, 0.7, 0.03])
+
         iteration_slider = Slider(
             ax=slider_axis,
             label="Iteration",
@@ -180,26 +183,66 @@ class Manager():
             valinit=start_iteration,
         )
 
-        def update(val):
+        basic_button_axis = tissue.tissue.plot[0].add_axes([0.15, 0.1, 0.09, 0.03])
+        basic_button = Button(basic_button_axis, "Basic")
+        spring_button_axis = tissue.tissue.plot[0].add_axes([0.25, 0.1, 0.09, 0.03])
+        spring_button = Button(spring_button_axis, "Spring")
+        force_button_axis = tissue.tissue.plot[0].add_axes([0.35, 0.1, 0.09, 0.03])
+        force_button = Button(force_button_axis, "Force")
+        major_axes_button_axis = tissue.tissue.plot[0].add_axes([0.45, 0.1, 0.09, 0.03])
+        major_axes_button = Button(major_axes_button_axis, "M. Axes")
+        avg_major_axes_button_axis = tissue.tissue.plot[0].add_axes([0.55, 0.1, 0.09, 0.03])
+        avg_major_axes_button = Button(avg_major_axes_button_axis, "Avg. Axes")
+        area_button_axis = tissue.tissue.plot[0].add_axes([0.65, 0.1, 0.09, 0.03])
+        area_button = Button(area_button_axis, "Area")
+        neighbour_button_axis = tissue.tissue.plot[0].add_axes([0.75, 0.1, 0.09, 0.03])
+        neighbour_button = Button(neighbour_button_axis, "Neighbour")
+        shape_factor_button_axis = tissue.tissue.plot[0].add_axes([0.15, 0.05, 0.09, 0.03])
+        shape_factor_button = Button(shape_factor_button_axis, "S. Factor")
+
+        def button_plot(button_type: int):
+            global plot_type
+            plot_type = button_type
+            select_plot(plot_type)
+            tissue.tissue.plot[0].canvas.draw_idle()
+
+        basic_button.on_clicked(lambda _: button_plot(0))
+        spring_button.on_clicked(lambda _: button_plot(1))
+        force_button.on_clicked(lambda _: button_plot(2))
+        major_axes_button.on_clicked(lambda _: button_plot(3))
+        avg_major_axes_button.on_clicked(lambda _: button_plot(4))
+        area_button.on_clicked(lambda _: button_plot(5))
+        neighbour_button.on_clicked(lambda _: button_plot(6))
+        shape_factor_button.on_clicked(lambda _: button_plot(7))
+
+        def update_slider(_):
+            global plot_type
             iteration = int(iteration_slider.val)
             tissue.load_iteration(iteration)
             select_plot(plot_type)
-            slider_axis.set_title("")
             tissue.tissue.plot[0].canvas.draw_idle()
 
         def on_release(event):
             if event.inaxes == iteration_slider.ax:
-                update(event)
+                update_slider(event)
 
         def on_key(event):
             if event.key == 'right':
                 new_val = min(iteration_slider.val + 10, iteration_slider.valmax)
                 iteration_slider.set_val(new_val)
-                update(event)
+                update_slider(event)
             elif event.key == 'left':
                 new_val = max(iteration_slider.val - 10, iteration_slider.valmin)
                 iteration_slider.set_val(new_val)
-                update(event)
+                update_slider(event)
+            elif event.key == 'shift+right':
+                new_val = max(iteration_slider.val + 100, iteration_slider.valmin)
+                iteration_slider.set_val(new_val)
+                update_slider(event)
+            elif event.key == 'shift+left':
+                new_val = max(iteration_slider.val - 100, iteration_slider.valmin)
+                iteration_slider.set_val(new_val)
+                update_slider(event)
             elif event.key == 'q':
                 return None
 
@@ -231,7 +274,7 @@ class Manager():
             elif plot_type == 4:
                 tissue.plot_avg_major_axes(title, duration=0.1)
             elif plot_type == 5:
-                tissue.plot_area_delta(title, duration=0.1)
+                tissue.plot_area_deltas(title, duration=0.1)
             elif plot_type == 6:
                 tissue.plot_neighbour_histogram(title, duration=0.1)
             elif plot_type == 7:
@@ -239,7 +282,7 @@ class Manager():
     
 # TESTING
 manager = Manager()
-manager.read_from_file("./saved_simulations/test11.json")
-manager.interactive_tissue("Animating Tissue Progression", index=0, plot_type=1)
+manager.read_from_file("./saved_simulations/L_R_20x20.json")
+manager.interactive_tissue("Animating Tissue Progression", index=0)
 #manager.animate_tissue("Animating Tissue Progression", index=0, plot_type=1)
 manager.plot_energy_progression("Net Energy Throughout Simulation")
