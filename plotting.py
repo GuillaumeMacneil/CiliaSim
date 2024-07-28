@@ -378,7 +378,20 @@ def plot_neighbour_histogram(adjacency_matrix: np.ndarray, title: str, duration:
 def plot_shape_factor_histogram(shape_factors: np.ndarray, title: str, duration: float, plot: TissuePlot, information: str = "", auto: bool = True):
     plot.ax.clear()
 
-    plot.ax.hist(shape_factors)
+    plot.ax.hist(shape_factors, bins=20)
+    max_sf = np.max(shape_factors)
+    min_sf = np.min(shape_factors)
+
+    shape_dict = {3.722: ["red", "Hexagon"],
+                  3.812: ["green", "Pentagon"],
+                  4.0: ["blue", "Square"],
+                  4.559: ["orange", "Triangle"]
+    }
+    for key in shape_dict.keys():
+        if min_sf <= key <= max_sf:
+            plot.ax.axvline(x=key, color=shape_dict[key][0], linestyle="--", linewidth=1, label=shape_dict[key][1])
+
+    plot.ax.legend()
 
     plot.information_box.set_text(information)
     if plot.colourbar:
