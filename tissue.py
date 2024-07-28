@@ -19,7 +19,7 @@ class Tissue():
 
         self.global_iteration = 0
         self.center_only = False
-        self.plot = (None, None, None, None)
+        self.plot = TissuePlot()
         self.plot_type = 0
 
         self.cell_points = np.array([])
@@ -344,21 +344,21 @@ class Tissue():
         if self.global_iteration % plot_frequency == 0:
             information = f"Iteration: {self.global_iteration}\nCilia force magnitude: {self.flow_magnitude}\nCilia force direction: {self.flow_direction}"
             if self.plot_type == 0:
-                self.plot = plot_tissue(self.cell_points, self.cell_types, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
+                plot_tissue(self.cell_points, self.cell_types, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 1:
-                self.plot = plot_springs(self.cell_points, self.cell_types, self.adjacency_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
+                plot_springs(self.cell_points, self.cell_types, self.adjacency_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 2:
-                self.plot = plot_force_vectors(self.cell_points, self.cell_types, self.force_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
+                plot_force_vectors(self.cell_points, self.cell_types, self.force_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 3:
-                self.plot = plot_major_axes(self.cell_points, self.cell_types, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
+                plot_major_axes(self.cell_points, self.cell_types, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 4:
-                self.plot = plot_avg_major_axes(self.cell_points, self.cell_types, self.adjacency_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
+                plot_avg_major_axes(self.cell_points, self.cell_types, self.adjacency_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 5:
-                self.plot = plot_area_delta(self.cell_points, self.cell_types, self.target_cell_area, title, 0.5, self.plot, information=information)
+                plot_area_delta(self.cell_points, self.cell_types, self.target_cell_area, title, 0.5, self.plot, information=information)
             elif self.plot_type == 6:
-                self.plot = plot_neighbour_histogram(self.adjacency_matrix, title, 0.5, self.plot, information=information)
+                plot_neighbour_histogram(self.adjacency_matrix, title, 0.5, self.plot, information=information)
             elif self.plot_type == 7:
-                self.plot = plot_shape_factor_histogram(self.calculate_shape_factors(), title, 0.5, self.plot, information=information)
+                plot_shape_factor_histogram(self.calculate_shape_factors(), title, 0.5, self.plot, information=information)
 
         self.global_iteration += 1
 
