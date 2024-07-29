@@ -83,10 +83,15 @@ class LoadedTissue():
         information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
         plot_springs(self.tissue.cell_points, self.tissue.cell_types, self.tissue.adjacency_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information, auto=auto)
 
-    def plot_force_vectors(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
+    def plot_force_vectors_rel(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
         information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
         self.tissue.calculate_force_matrix()
-        plot_force_vectors(self.tissue.cell_points, self.tissue.cell_types, self.tissue.force_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information, auto=auto)
+        plot_force_vectors_rel(self.tissue.cell_points, self.tissue.cell_types, self.tissue.force_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information, auto=auto)
+
+    def plot_force_vectors_abs(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
+        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        self.tissue.calculate_force_matrix()
+        plot_force_vectors_abs(self.tissue.cell_points, self.tissue.cell_types, self.tissue.force_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information, auto=auto)
 
     def plot_major_axes(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
         information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
@@ -148,16 +153,18 @@ class Manager():
             elif plot_type == 1:
                 tissue.plot_springs(title, duration=0.1, auto=False)
             elif plot_type == 2:
-                tissue.plot_force_vectors(title, duration=0.1, auto=False)
+                tissue.plot_force_vectors_rel(title, duration=0.1, auto=False)
             elif plot_type == 3:
-                tissue.plot_major_axes(title, duration=0.1, auto=False)
+                tissue.plot_force_vectors_abs(title, duration=0.1, auto=False)
             elif plot_type == 4:
-                tissue.plot_avg_major_axes(title, duration=0.1, auto=False)
+                tissue.plot_major_axes(title, duration=0.1, auto=False)
             elif plot_type == 5:
-                tissue.plot_area_deltas(title, duration=0.1, auto=False)
+                tissue.plot_avg_major_axes(title, duration=0.1, auto=False)
             elif plot_type == 6:
-                tissue.plot_neighbour_histogram(title, duration=0.1, auto=False)
+                tissue.plot_area_deltas(title, duration=0.1, auto=False)
             elif plot_type == 7:
+                tissue.plot_neighbour_histogram(title, duration=0.1, auto=False)
+            elif plot_type == 8:
                 tissue.plot_shape_factor_histogram(title, duration=0.1, auto=False)
 
         tissue = self.tissues[index]
@@ -187,17 +194,19 @@ class Manager():
         basic_button = Button(basic_button_axis, "Basic")
         spring_button_axis = tissue.tissue.plot.fig.add_axes([0.25, 0.1, 0.09, 0.03])
         spring_button = Button(spring_button_axis, "Spring")
-        force_button_axis = tissue.tissue.plot.fig.add_axes([0.35, 0.1, 0.09, 0.03])
-        force_button = Button(force_button_axis, "Force")
-        major_axes_button_axis = tissue.tissue.plot.fig.add_axes([0.45, 0.1, 0.09, 0.03])
+        force_rel_button_axis = tissue.tissue.plot.fig.add_axes([0.35, 0.1, 0.09, 0.03])
+        force_rel_button = Button(force_rel_button_axis, "Rel. Force")
+        force_abs_button_axis = tissue.tissue.plot.fig.add_axes([0.45, 0.1, 0.09, 0.03])
+        force_abs_button = Button(force_abs_button_axis, "Abs. Force")
+        major_axes_button_axis = tissue.tissue.plot.fig.add_axes([0.55, 0.1, 0.09, 0.03])
         major_axes_button = Button(major_axes_button_axis, "M. Axes")
-        avg_major_axes_button_axis = tissue.tissue.plot.fig.add_axes([0.55, 0.1, 0.09, 0.03])
+        avg_major_axes_button_axis = tissue.tissue.plot.fig.add_axes([0.65, 0.1, 0.09, 0.03])
         avg_major_axes_button = Button(avg_major_axes_button_axis, "Avg. Axes")
-        area_button_axis = tissue.tissue.plot.fig.add_axes([0.65, 0.1, 0.09, 0.03])
+        area_button_axis = tissue.tissue.plot.fig.add_axes([0.75, 0.1, 0.09, 0.03])
         area_button = Button(area_button_axis, "Area")
-        neighbour_button_axis = tissue.tissue.plot.fig.add_axes([0.75, 0.1, 0.09, 0.03])
-        neighbour_button = Button(neighbour_button_axis, "Neighbour")
-        shape_factor_button_axis = tissue.tissue.plot.fig.add_axes([0.15, 0.05, 0.09, 0.03])
+        neighbour_button_axis = tissue.tissue.plot.fig.add_axes([0.15, 0.05, 0.09, 0.03])
+        neighbour_button = Button(neighbour_button_axis, "Conn.")
+        shape_factor_button_axis = tissue.tissue.plot.fig.add_axes([0.25, 0.05, 0.09, 0.03])
         shape_factor_button = Button(shape_factor_button_axis, "S. Factor")
 
         def button_plot(button_type: int):
@@ -208,12 +217,13 @@ class Manager():
 
         basic_button.on_clicked(lambda _: button_plot(0))
         spring_button.on_clicked(lambda _: button_plot(1))
-        force_button.on_clicked(lambda _: button_plot(2))
-        major_axes_button.on_clicked(lambda _: button_plot(3))
-        avg_major_axes_button.on_clicked(lambda _: button_plot(4))
-        area_button.on_clicked(lambda _: button_plot(5))
-        neighbour_button.on_clicked(lambda _: button_plot(6))
-        shape_factor_button.on_clicked(lambda _: button_plot(7))
+        force_rel_button.on_clicked(lambda _: button_plot(2))
+        force_abs_button.on_clicked(lambda _: button_plot(3))
+        major_axes_button.on_clicked(lambda _: button_plot(4))
+        avg_major_axes_button.on_clicked(lambda _: button_plot(5))
+        area_button.on_clicked(lambda _: button_plot(6))
+        neighbour_button.on_clicked(lambda _: button_plot(7))
+        shape_factor_button.on_clicked(lambda _: button_plot(8))
 
         def update_slider(_):
             global plot_type
@@ -236,7 +246,7 @@ class Manager():
                 iteration_slider.set_val(new_val)
                 update_slider(event)
             elif event.key == 'shift+right':
-                new_val = max(iteration_slider.val + 100, iteration_slider.valmin)
+                new_val = min(iteration_slider.val + 100, iteration_slider.valmax)
                 iteration_slider.set_val(new_val)
                 update_slider(event)
             elif event.key == 'shift+left':
@@ -268,21 +278,23 @@ class Manager():
             elif plot_type == 1:
                 tissue.plot_springs(title, duration=0.1)
             elif plot_type == 2:
-                tissue.plot_force_vectors(title, duration=0.1)
+                tissue.plot_force_vectors_rel(title, duration=0.1)
             elif plot_type == 3:
-                tissue.plot_major_axes(title, duration=0.1)
+                tissue.plot_force_vectors_abs(title, duration=0.1)
             elif plot_type == 4:
-                tissue.plot_avg_major_axes(title, duration=0.1)
+                tissue.plot_major_axes(title, duration=0.1)
             elif plot_type == 5:
-                tissue.plot_area_deltas(title, duration=0.1)
+                tissue.plot_avg_major_axes(title, duration=0.1)
             elif plot_type == 6:
-                tissue.plot_neighbour_histogram(title, duration=0.1)
+                tissue.plot_area_deltas(title, duration=0.1)
             elif plot_type == 7:
+                tissue.plot_neighbour_histogram(title, duration=0.1)
+            elif plot_type == 8:
                 tissue.plot_shape_factor_histogram(title, duration=0.1)
     
 # TESTING
 manager = Manager()
-manager.read_from_file("./saved_simulations/L_R_20x20.json")
+manager.read_from_file("./saved_simulations/test16.json")
 manager.interactive_tissue("Animating Tissue Progression", index=0)
 #manager.animate_tissue("Animating Tissue Progression", index=0, plot_type=1)
 manager.plot_energy_progression("Net Energy Throughout Simulation")

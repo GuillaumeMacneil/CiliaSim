@@ -31,7 +31,7 @@ class Tissue():
 
         self.target_spring_length = 1
         self.target_cell_area = np.sqrt(3) / 2
-        self.critical_length_delta = 0.2
+        self.critical_length_delta = 0.1
 
         self.net_energy = np.array([])
 
@@ -195,25 +195,26 @@ class Tissue():
             neighbours = neighbour_vertices[1][neighbour_vertices[0][i]:neighbour_vertices[0][i+1]]
             self.adjacency_matrix[i, neighbours] = 1
 
-        delete_list = []
-        for cell in boundary_cells[0]:
-            cell_neighbours = np.where(self.adjacency_matrix[cell] == 1)
-            boundary_neighbours = np.intersect1d(cell_neighbours, boundary_cells)
+        #delete_list = []
+        #for cell in boundary_cells[0]:
+        #    cell_neighbours = np.where(self.adjacency_matrix[cell] == 1)
+        #    boundary_neighbours = np.intersect1d(cell_neighbours, boundary_cells)
             
-            if len(cell_neighbours) == len(boundary_neighbours):
-                delete_list.append(cell)
-                for neighbour in boundary_neighbours:
-                    self.adjacency_matrix[neighbour, cell] = 0
+        #    if len(cell_neighbours) == len(boundary_neighbours):
+        #        delete_list.append(cell)
+        #        for neighbour in boundary_neighbours:
+        #            self.adjacency_matrix[neighbour, cell] = 0
 
-        for cell in delete_list:
-            self.cell_points = np.delete(self.cell_points, cell)
-            self.cell_types = np.delete(self.cell_types, cell)
-            self.adjacency_matrix = np.delete(self.adjacency_matrix, cell, axis=0)
-            self.adjacency_matrix = np.delete(self.adjacency_matrix, cell, axis=1)
-            self.num_cells -= 1
+        #for cell in delete_list:
+        #    self.cell_points = np.delete(self.cell_points, cell)
+        #    self.cell_types = np.delete(self.cell_types, cell)
+        #    self.adjacency_matrix = np.delete(self.adjacency_matrix, cell, axis=0)
+        #    self.adjacency_matrix = np.delete(self.adjacency_matrix, cell, axis=1)
+        #    self.num_cells -= 1
+#
+        #boundary_cells = np.setdiff1d(boundary_cells, delete_list)
 
-        boundary_cells = np.setdiff1d(boundary_cells, delete_list)
-
+        boundary_cells = boundary_cells[0]
         for cell in boundary_cells:
             cell_neighbours = np.where(self.adjacency_matrix[cell] == 1)
             boundary_neighbours = np.intersect1d(cell_neighbours, boundary_cells)
@@ -276,7 +277,8 @@ class Tissue():
         for m_index in np.where(self.cell_types == 2)[0]:
             self.force_matrix[m_index, m_index] = self.flow_magnitude * self.flow_direction
 
-        self.net_energy = np.append(self.net_energy, net_energy)
+        if not tension_only:
+            self.net_energy = np.append(self.net_energy, net_energy)
 
     def calculate_shape_factors(self):
         voronoi = Voronoi(self.cell_points)
@@ -348,16 +350,18 @@ class Tissue():
             elif self.plot_type == 1:
                 plot_springs(self.cell_points, self.cell_types, self.adjacency_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 2:
-                plot_force_vectors(self.cell_points, self.cell_types, self.force_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
+                plot_force_vectors_rel(self.cell_points, self.cell_types, self.force_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 3:
-                plot_major_axes(self.cell_points, self.cell_types, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
+                plot_force_vectors_abs(self.cell_points, self.cell_types, self.force_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 4:
-                plot_avg_major_axes(self.cell_points, self.cell_types, self.adjacency_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
+                plot_major_axes(self.cell_points, self.cell_types, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 5:
-                plot_area_delta(self.cell_points, self.cell_types, self.target_cell_area, title, 0.5, self.plot, information=information)
+                plot_avg_major_axes(self.cell_points, self.cell_types, self.adjacency_matrix, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 6:
-                plot_neighbour_histogram(self.adjacency_matrix, title, 0.5, self.plot, information=information)
+                plot_area_delta(self.cell_points, self.cell_types, self.target_cell_area, title, 0.5, self.plot, information=information)
             elif self.plot_type == 7:
+                plot_neighbour_histogram(self.adjacency_matrix, title, 0.5, self.plot, information=information)
+            elif self.plot_type == 8:
                 plot_shape_factor_histogram(self.calculate_shape_factors(), title, 0.5, self.plot, information=information)
 
         self.global_iteration += 1
