@@ -366,7 +366,7 @@ class Tissue():
 
         self.global_iteration += 1
 
-    def simulate(self, title: str, iterations: int = 5000, plot_frequency: int = 100, tension_only: bool = False):
+    def simulate(self, title: str, iterations: int = 5000, plot_frequency: int = 100, tension_only: bool = False, plotting: bool = True):
         plt.ion()
         for i in range(iterations):
             self.calculate_force_matrix(tension_only)
@@ -376,8 +376,11 @@ class Tissue():
             if self.tracking:
                 self.cell_states[self.global_iteration] = self.cell_points.tolist()
 
-            self.increment_global_iteration(title, x_lim=self.x, y_lim=self.y, plot_frequency=plot_frequency)
-            #self.increment_global_iteration(title, plot_frequency=plot_frequency)
+            if plotting:
+                self.increment_global_iteration(title, x_lim=self.x, y_lim=self.y, plot_frequency=plot_frequency)
+            else:
+                self.global_iteration += 1
+
             self.evaluate_boundary()
             
     def write_to_file(self, path: str):

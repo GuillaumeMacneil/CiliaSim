@@ -5,14 +5,27 @@ from scipy.spatial import Delaunay
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
 import json
+import multiprocessing as mp
+
+# GLOBAL VARIABLE:
+plot_type = 0
 
 class LoadedTissue():
-    def __init__(self, parameters: dict, cell_types: list, target_areas: list, cell_states: dict, force_states: dict):
+    def __init__(self, parameters: dict, cell_types: list, target_areas: list, cell_states: dict, force_states: dict, net_energy: list):
+        # Keep the original __init__ parameters around for easier duplication
+        self.init_parameters = parameters
+        self.init_cell_types = cell_types
+        self.init_target_areas = target_areas
+        self.init_cell_states = cell_states
+        self.init_force_states = force_states
+        self.init_net_energy = net_energy
+
         self.tissue = Tissue(parameters["x"], parameters["y"], parameters["cilia_density"])
         self.tissue.target_areas = np.array(target_areas)
         self.cell_types = np.array(cell_types)
         self.cell_states = cell_states
         self.force_states = force_states
+        self.net_energy = net_energy
 
         keys = self.cell_states.keys()
         keys = [int(key) for key in keys]
@@ -72,8 +85,8 @@ class LoadedTissue():
     def set_flow(self,flow_direction: list, flow_magnitude: float):
         self.tissue.set_flow(flow_direction, flow_magnitude)
 
-    def simulate(self, title: str, iterations: int = 5000):
-        self.tissue.simulate(title, iterations)
+    def simulate(self, title: str, iterations: int = 5000, plotting: bool = True):
+        self.tissue.simulate(title, iterations, plotting=plotting)
 
     def plot_tissue(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
         information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
@@ -114,73 +127,39 @@ class LoadedTissue():
         shape_factors = self.tissue.calculate_shape_factors()
         plot_shape_factor_histogram(shape_factors, title, duration, self.tissue.plot, information=information, auto=auto)
 
-# GLOBAL VARIABLE:
-plot_type = 0
-
-class Manager():
-    def __init__(self):
-        self.tissues = []
-        # FIXME: This should be specific to each tissue
-        self.net_energy = []
-
-    def read_from_file(self, path: str):
-        with open(path, "r") as input_file:
-            json_data = json.load(input_file)
-
-            parameters = json_data["parameters"]
-            cell_types = json_data["cell_types"]
-            target_areas = json_data["target_areas"]
-            cell_states = json_data["cell_states"]
-            force_states = json_data["force_states"]
-            self.net_energy = json_data["net_energy"]
-
-            self.tissues.append(LoadedTissue(parameters, cell_types, target_areas, cell_states, force_states))
-
-    def plot_energy_progression(self, title: str):
-        fig, ax = plt.subplots()
-        ax.plot(np.arange(0, len(self.net_energy)), self.net_energy)
-
-        fig.set_figheight(8)
-        fig.set_figwidth(8)
-        
-        plt.title(title)
-        plt.show()
-
-    def interactive_tissue(self, title: str, index: int, start_iteration: int = 0, end_iteration: int = 0):
+    def interactive_tissue(self, title: str, start_iteration: int = 0, end_iteration: int = 0):
         def select_plot(plot_type: int):
             if plot_type == 0:
-                tissue.plot_tissue(title, duration=0.1, auto=False)
+                self.plot_tissue(title, duration=0.1, auto=False)
             elif plot_type == 1:
-                tissue.plot_springs(title, duration=0.1, auto=False)
+                self.plot_springs(title, duration=0.1, auto=False)
             elif plot_type == 2:
-                tissue.plot_force_vectors_rel(title, duration=0.1, auto=False)
+                self.plot_force_vectors_rel(title, duration=0.1, auto=False)
             elif plot_type == 3:
-                tissue.plot_force_vectors_abs(title, duration=0.1, auto=False)
+                self.plot_force_vectors_abs(title, duration=0.1, auto=False)
             elif plot_type == 4:
-                tissue.plot_major_axes(title, duration=0.1, auto=False)
+                self.plot_major_axes(title, duration=0.1, auto=False)
             elif plot_type == 5:
-                tissue.plot_avg_major_axes(title, duration=0.1, auto=False)
+                self.plot_avg_major_axes(title, duration=0.1, auto=False)
             elif plot_type == 6:
-                tissue.plot_area_deltas(title, duration=0.1, auto=False)
+                self.plot_area_deltas(title, duration=0.1, auto=False)
             elif plot_type == 7:
-                tissue.plot_neighbour_histogram(title, duration=0.1, auto=False)
+                self.plot_neighbour_histogram(title, duration=0.1, auto=False)
             elif plot_type == 8:
-                tissue.plot_shape_factor_histogram(title, duration=0.1, auto=False)
-
-        tissue = self.tissues[index]
+                self.plot_shape_factor_histogram(title, duration=0.1, auto=False)
 
         if start_iteration == 0:
-            start_iteration = int(tissue.min_it)
+            start_iteration = int(self.min_it)
         
         if end_iteration == 0:
-            end_iteration = int(tissue.max_it)
+            end_iteration = int(self.max_it)
         
-        tissue.load_iteration(start_iteration)
+        self.load_iteration(start_iteration)
         select_plot(plot_type)
 
         plt.subplots_adjust(left=0.1, bottom=0.25)
 
-        slider_axis = tissue.tissue.plot.fig.add_axes([0.15, 0.15, 0.7, 0.03])
+        slider_axis = self.tissue.plot.fig.add_axes([0.15, 0.15, 0.7, 0.03])
 
         iteration_slider = Slider(
             ax=slider_axis,
@@ -190,30 +169,30 @@ class Manager():
             valinit=start_iteration,
         )
 
-        basic_button_axis = tissue.tissue.plot.fig.add_axes([0.15, 0.1, 0.09, 0.03])
+        basic_button_axis = self.tissue.plot.fig.add_axes([0.15, 0.1, 0.09, 0.03])
         basic_button = Button(basic_button_axis, "Basic")
-        spring_button_axis = tissue.tissue.plot.fig.add_axes([0.25, 0.1, 0.09, 0.03])
+        spring_button_axis = self.tissue.plot.fig.add_axes([0.25, 0.1, 0.09, 0.03])
         spring_button = Button(spring_button_axis, "Spring")
-        force_rel_button_axis = tissue.tissue.plot.fig.add_axes([0.35, 0.1, 0.09, 0.03])
+        force_rel_button_axis = self.tissue.plot.fig.add_axes([0.35, 0.1, 0.09, 0.03])
         force_rel_button = Button(force_rel_button_axis, "Rel. Force")
-        force_abs_button_axis = tissue.tissue.plot.fig.add_axes([0.45, 0.1, 0.09, 0.03])
+        force_abs_button_axis = self.tissue.plot.fig.add_axes([0.45, 0.1, 0.09, 0.03])
         force_abs_button = Button(force_abs_button_axis, "Abs. Force")
-        major_axes_button_axis = tissue.tissue.plot.fig.add_axes([0.55, 0.1, 0.09, 0.03])
+        major_axes_button_axis = self.tissue.plot.fig.add_axes([0.55, 0.1, 0.09, 0.03])
         major_axes_button = Button(major_axes_button_axis, "M. Axes")
-        avg_major_axes_button_axis = tissue.tissue.plot.fig.add_axes([0.65, 0.1, 0.09, 0.03])
+        avg_major_axes_button_axis = self.tissue.plot.fig.add_axes([0.65, 0.1, 0.09, 0.03])
         avg_major_axes_button = Button(avg_major_axes_button_axis, "Avg. Axes")
-        area_button_axis = tissue.tissue.plot.fig.add_axes([0.75, 0.1, 0.09, 0.03])
+        area_button_axis = self.tissue.plot.fig.add_axes([0.75, 0.1, 0.09, 0.03])
         area_button = Button(area_button_axis, "Area")
-        neighbour_button_axis = tissue.tissue.plot.fig.add_axes([0.15, 0.05, 0.09, 0.03])
+        neighbour_button_axis = self.tissue.plot.fig.add_axes([0.15, 0.05, 0.09, 0.03])
         neighbour_button = Button(neighbour_button_axis, "Conn.")
-        shape_factor_button_axis = tissue.tissue.plot.fig.add_axes([0.25, 0.05, 0.09, 0.03])
+        shape_factor_button_axis = self.tissue.plot.fig.add_axes([0.25, 0.05, 0.09, 0.03])
         shape_factor_button = Button(shape_factor_button_axis, "S. Factor")
 
         def button_plot(button_type: int):
             global plot_type
             plot_type = button_type
             select_plot(plot_type)
-            tissue.tissue.plot.fig.canvas.draw_idle()
+            self.tissue.plot.fig.canvas.draw_idle()
 
         basic_button.on_clicked(lambda _: button_plot(0))
         spring_button.on_clicked(lambda _: button_plot(1))
@@ -228,9 +207,9 @@ class Manager():
         def update_slider(_):
             global plot_type
             iteration = int(iteration_slider.val)
-            tissue.load_iteration(iteration)
+            self.load_iteration(iteration)
             select_plot(plot_type)
-            tissue.tissue.plot.fig.canvas.draw_idle()
+            self.tissue.plot.fig.canvas.draw_idle()
 
         def on_release(event):
             if event.inaxes == iteration_slider.ax:
@@ -256,45 +235,104 @@ class Manager():
             elif event.key == 'q':
                 return None
 
-        tissue.tissue.plot.fig.canvas.mpl_connect('button_release_event', on_release)
-        tissue.tissue.plot.fig.canvas.mpl_connect('key_press_event', on_key)
+        self.tissue.plot.fig.canvas.mpl_connect('button_release_event', on_release)
+        self.tissue.plot.fig.canvas.mpl_connect('key_press_event', on_key)
 
         plt.show()
 
-    def animate_tissue(self, title: str, index: int, plot_type: int, start_iteration: int = 0, end_iteration: int = 0, step: int = 50):
+    def animate_tissue(self, title: str, plot_type: int, start_iteration: int = 0, end_iteration: int = 0, step: int = 50):
         plt.ion()
-        tissue = self.tissues[index]
 
         if start_iteration == 0:
-            start_iteration = int(tissue.min_it)
+            start_iteration = int(self.min_it)
         
         if end_iteration == 0:
-            end_iteration = int(tissue.max_it)
+            end_iteration = int(self.max_it)
 
         for i in range(0, end_iteration - start_iteration, step):
-            tissue.load_iteration(start_iteration + i)
+            self.load_iteration(start_iteration + i)
             if plot_type == 0:
-                tissue.plot_tissue(title, duration=0.1)
+                self.plot_tissue(title, duration=0.1)
             elif plot_type == 1:
-                tissue.plot_springs(title, duration=0.1)
+                self.plot_springs(title, duration=0.1)
             elif plot_type == 2:
-                tissue.plot_force_vectors_rel(title, duration=0.1)
+                self.plot_force_vectors_rel(title, duration=0.1)
             elif plot_type == 3:
-                tissue.plot_force_vectors_abs(title, duration=0.1)
+                self.plot_force_vectors_abs(title, duration=0.1)
             elif plot_type == 4:
-                tissue.plot_major_axes(title, duration=0.1)
+                self.plot_major_axes(title, duration=0.1)
             elif plot_type == 5:
-                tissue.plot_avg_major_axes(title, duration=0.1)
+                self.plot_avg_major_axes(title, duration=0.1)
             elif plot_type == 6:
-                tissue.plot_area_deltas(title, duration=0.1)
+                self.plot_area_deltas(title, duration=0.1)
             elif plot_type == 7:
-                tissue.plot_neighbour_histogram(title, duration=0.1)
+                self.plot_neighbour_histogram(title, duration=0.1)
             elif plot_type == 8:
-                tissue.plot_shape_factor_histogram(title, duration=0.1)
+                self.plot_shape_factor_histogram(title, duration=0.1)
+
+    def plot_energy_progression(self, title: str):
+        fig, ax = plt.subplots()
+        ax.plot(np.arange(0, len(self.net_energy)), self.net_energy)
+
+        fig.set_figheight(8)
+        fig.set_figwidth(8)
+        
+        plt.title(title)
+        plt.show()
+
+class Manager():
+    def __init__(self):
+        self.tissues = []
+
+    def read_from_file(self, path: str):
+        with open(path, "r") as input_file:
+            json_data = json.load(input_file)
+
+            parameters = json_data["parameters"]
+            cell_types = json_data["cell_types"]
+            target_areas = json_data["target_areas"]
+            cell_states = json_data["cell_states"]
+            force_states = json_data["force_states"]
+            net_energy = json_data["net_energy"]
+
+            self.tissues.append(LoadedTissue(parameters, cell_types, target_areas, cell_states, force_states, net_energy))
+
+    def interactive_plot(self, index: int, title: str, start_iteration: int = 0, end_iteration: int = 0):
+        self.tissues[index].interactive_tissue(title, start_iteration, end_iteration)
+
+    def animate_plot(self, index: int, title: str, plot_type: int, start_iteration: int = 0, end_iteration: int = 0, step: int = 50):
+        self.tissues[index].animate_tissue(title, plot_type, start_iteration, end_iteration, step)
+
+    def energy_progression_plot(self, index: int, title: str):
+        self.tissues[index].plot_energy_progression(title)
+
+    def duplicate_tissue(self, index: int):
+        from_tissue = self.tissues[index]
+        self.tissues.append(
+            LoadedTissue(
+                from_tissue.init_parameters,
+                from_tissue.init_cell_types,
+                from_tissue.init_target_areas,
+                from_tissue.init_cell_states,
+                from_tissue.init_force_states,
+                from_tissue.init_net_energy,
+            )
+        )
+
+    def batch_load_iteration(self, iteration: int):
+        for tissue in self.tissues:
+            if not (tissue.min_it <= iteration <= tissue.max_it):
+                raise ValueError(f"Batch load iteration must be valid for all tissues ({tissue.min_it} <= x <= {tissue.max_it})")
+        
+        for tissue in self.tissues:
+            tissue.load_iteration(iteration)
+
     
-# TESTING
-manager = Manager()
-manager.read_from_file("./saved_simulations/test16.json")
-manager.interactive_tissue("Animating Tissue Progression", index=0)
-#manager.animate_tissue("Animating Tissue Progression", index=0, plot_type=1)
-manager.plot_energy_progression("Net Energy Throughout Simulation")
+    def batch_simulate(self):
+        with mp.Pool(processes=mp.cpu_count()) as pool:
+            pool.map(simulate_tissue, self.tissues)
+
+def simulate_tissue(tissue):
+    tissue.simulate("", 1000, plotting=False)
+
+
