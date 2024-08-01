@@ -6,6 +6,7 @@ from scipy.spatial import Voronoi, Delaunay
 from scipy.stats import qmc
 import matplotlib.pyplot as plt
 import json
+from collections import defaultdict
 
 class Tissue():
     def __init__(self, x: int, y: int, cilia_density: float):
@@ -37,12 +38,14 @@ class Tissue():
 
         # State encoding variables
         self.tracking = False
-        self.force_states = {} # [[Global Iteration, Affected Cell (-1 indicates all), Direction [x, y], Magnitude z], ...]
-        self.cell_states = {} # [[Cell Positions], [Cell Positions], ...]
+        self.force_states = defaultdict(dict)
+        self.cell_states = {}
         
-        # Exogenous flow 
-        self.flow_direction = np.array([0, 0])
-        self.flow_magnitude = 0
+        # Cilia force
+        self.cilia_forces = {}
+
+        # Exogenous flow force
+        self.flow_force = np.array([0, 0])
         
     def set_center_only(self, value: bool):
         self.center_only = value
@@ -66,7 +69,7 @@ class Tissue():
         self.generate_cells(specialize=False)        
         self.simulate("Random Layout Annealing (Tension Only, No Specialization)", 1500, 100, tension_only=True)
         self.generate_cells()        
-        self.simulate("Random Layout Annealing (Tension Only)", 1500, 100, tension_only=True)
+        self.simulate("Random Layout Annealing", 1500, 100)
         self.global_iteration = 0
 
     def hexagonal_grid_layout(self):
@@ -128,7 +131,7 @@ class Tissue():
 
                     chosen_cell = np.random.choice(candidates)
                     self.cell_types[chosen_cell] = 2
-                    for cell_index in np.where(self.adjacency_matrix[chosen_cell] == 1):
+                    for cell_index in np.where(self.adjacency_matrix[chosen_cell] == 1)[0]:
                         if not self.cell_types[cell_index]:
                             self.cell_types[cell_index] = 3
 
@@ -152,12 +155,42 @@ class Tissue():
                 if self.cell_types[i] != 1:
                     self.target_areas[i] = self.target_cell_area
 
+            self.set_uniform_cilia_forces([0, 0], 0)
+   
+    def add_cilia_force(self, cell_index: int, force: list):
+        self.cilia_forces[cell_index] = np.array(force)
+
+    def set_random_cilia_forces(self, magnitude: float):
+        multiciliated_cells = np.where(self.cell_types == 2)[0]
+        non_unit_directions = np.random.uniform(-1, 1, [len(multiciliated_cells), 2])
+        unit_directions = non_unit_directions / np.linalg.norm(non_unit_directions)
+        for i in range(len(multiciliated_cells)):
+            self.cilia_forces[multiciliated_cells[i]] = unit_directions[i] * magnitude
+
+            if self.tracking:
+                self.force_states[self.global_iteration][int(multiciliated_cells[i])] = (unit_directions[i] * magnitude).tolist()
+                if -1 not in self.force_states.keys():
+                    self.force_states[self.global_iteration][-1] = self.flow_force.tolist()
+
+    def set_uniform_cilia_forces(self, direction: list, magnitude: float):
+        force = np.array(direction) * magnitude
+        multiciliated_cells = np.where(self.cell_types == 2)[0]
+        for multiciliated_cell in multiciliated_cells:
+            self.cilia_forces[multiciliated_cell] = force
+
+            if self.tracking:
+                self.force_states[self.global_iteration][int(multiciliated_cell)] = force.tolist()
+                if -1 not in self.force_states.keys():
+                    self.force_states[self.global_iteration][-1] = self.flow_force.tolist()
+
     def set_flow(self, flow_direction, flow_magnitude):
-        self.flow_direction = np.array(flow_direction)
-        self.flow_magnitude = flow_magnitude
+        self.flow_force = np.array(flow_direction) * flow_magnitude
 
         if self.tracking:
-            self.force_states[self.global_iteration] = [-1, flow_direction, flow_magnitude]
+            self.force_states[self.global_iteration][-1] = self.flow_force.tolist()
+            if len(self.force_states[self.global_iteration].keys()) == 1:
+                for key in self.cilia_forces.keys():
+                    self.force_states[self.global_iteration][int(key)] = self.cilia_forces[int(key)].tolist()
 
     def set_plot_basic(self):
         self.plot_type = 0
@@ -165,23 +198,26 @@ class Tissue():
     def set_plot_spring(self):
         self.plot_type = 1
 
-    def set_plot_force_vector(self):
+    def set_plot_force_vector_rel(self):
         self.plot_type = 2
 
-    def set_plot_major_axes(self):
+    def set_plot_force_vector_abs(self):
         self.plot_type = 3
 
-    def set_plot_avg_major_axes(self):
+    def set_plot_major_axes(self):
         self.plot_type = 4
 
-    def set_plot_area_deltas(self):
+    def set_plot_avg_major_axes(self):
         self.plot_type = 5
 
-    def set_plot_neighbour_histogram(self):
+    def set_plot_area_deltas(self):
         self.plot_type = 6
 
-    def set_plot_shape_factor_histogram(self):
+    def set_plot_neighbour_histogram(self):
         self.plot_type = 7
+
+    def set_plot_shape_factor_histogram(self):
+        self.plot_type = 8
 
     def calculate_force_matrix(self, tension_only: bool = False):
         delaunay = Delaunay(self.cell_points)
@@ -273,9 +309,9 @@ class Tissue():
 
         self.force_matrix = magnitude_matrix.T[:, :, np.newaxis] * unit_vector_matrix
 
-        # Calculate external force contributions
+        # Calculate cilia and external force contributions
         for m_index in np.where(self.cell_types == 2)[0]:
-            self.force_matrix[m_index, m_index] = self.flow_magnitude * self.flow_direction
+            self.force_matrix[m_index, m_index] = self.cilia_forces[m_index] + self.flow_force          
 
         if not tension_only:
             self.net_energy = np.append(self.net_energy, net_energy)
@@ -344,7 +380,7 @@ class Tissue():
 
     def increment_global_iteration(self, title: str, x_lim: int = 0, y_lim: int = 0, plot_frequency: int = 100):
         if self.global_iteration % plot_frequency == 0:
-            information = f"Iteration: {self.global_iteration}\nCilia force magnitude: {self.flow_magnitude}\nCilia force direction: {self.flow_direction}"
+            information = f"Iteration: {self.global_iteration}\nEx. Flow Force: {self.flow_force}"
             if self.plot_type == 0:
                 plot_tissue(self.cell_points, self.cell_types, title, 0.5, self.plot, x_lim=x_lim, y_lim=y_lim, information=information)
             elif self.plot_type == 1:

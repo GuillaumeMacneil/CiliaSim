@@ -5,6 +5,7 @@ import matplotlib.colors as mcolours
 import matplotlib.cm as cm
 import numpy as np
 from scipy.spatial import Voronoi
+from scipy.interpolate import griddata
 
 class TissuePlot():
     def __init__(self):
@@ -215,52 +216,6 @@ def plot_force_vectors_abs(points: np.ndarray, cell_types: np.ndarray, force_mat
         plt.show()
         plt.pause(duration)
 
-
-def plot_force_vectors(points: np.ndarray, cell_types: np.ndarray, force_matrix: np.ndarray, title: str, duration: float, plot: TissuePlot, x_lim: int = 0, y_lim: int = 0, information: str = "", auto: bool = True):
-    plot.ax.clear()
-
-    basic_indices = np.where(cell_types == 0)[0]
-    boundary_indices = np.where(cell_types == 1)[0]
-    boundary_points = points[boundary_indices]
-    multiciliated_indices = np.where(cell_types == 2)[0]
-
-    voronoi = Voronoi(points)
-
-    for basic_index in basic_indices:
-        region = voronoi.regions[voronoi.point_region[basic_index]]
-        if -1 not in region:
-            polygon = voronoi.vertices[region]
-            plot.ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey", edgecolor="black")
-
-    for multiciliated_index in multiciliated_indices:
-        region = voronoi.regions[voronoi.point_region[multiciliated_index]]
-        if -1 not in region:
-            polygon = voronoi.vertices[region]
-            plot.ax.fill(*zip(*polygon), alpha=0.6, color="orange", edgecolor="black")
-
-    plot.ax.scatter(boundary_points[:, 0], boundary_points[:, 1], s=20, color="green")   
-
-    force_vector = np.array([np.sum(force_matrix[:, point_index], axis=0) for point_index in range(len(points))])
-    plot.ax.quiver(points[:, 0], points[:, 1], force_vector[:, 0], force_vector[:, 1], angles='xy', scale_units='xy', scale=0.1)
-
-    plot.information_box.set_text(information)
-    if plot.colourbar:
-        if plot.colourbar.ax.get_visible():
-            plot.colourbar.ax.set_visible(False)
-            ax_pos = plot.ax.get_position()
-            plot.ax.set_position([ax_pos.x0, ax_pos.y0, ax_pos.width + 0.1, ax_pos.height])
-
-    if x_lim and y_lim:
-        plt.xlim([0, x_lim])
-        plt.ylim([0, y_lim])
-
-    plot.ax.set_title(title)
-
-    if auto:
-        plt.show()
-        plt.pause(duration)
-
- 
 def plot_major_axes(points: np.ndarray, cell_types: np.ndarray, title: str, duration: float, plot: TissuePlot, x_lim: int = 0, y_lim: int = 0, information: str = "", auto: bool = True):
     plot.ax.clear()
 
@@ -277,10 +232,20 @@ def plot_major_axes(points: np.ndarray, cell_types: np.ndarray, title: str, dura
             polygon = voronoi.vertices[region]
             plot.ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey", edgecolor="black")
 
+            edges = np.roll(polygon, 1, axis=0) - polygon
+            perimeter = 0
+            q_tensor = np.zeros((2, 2))
+            for i in range(len(edges)):
+                len_edge = np.linalg.norm(edges[i])
+                unit_edge = edges[i] / len_edge
+
+                perimeter += len_edge
+                q_tensor += len_edge * (np.outer(unit_edge, unit_edge) - np.eye(2) / 2)
+
+            q_tensor /= perimeter
             center = points[basic_index]
             centered_points = polygon - center 
-            covariance_matrix = np.cov(centered_points, rowvar=False)
-            eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
+            eigenvalues, eigenvectors = np.linalg.eigh(q_tensor)
             major_axis_index = np.argmax(eigenvalues)
             major_axis = eigenvectors[:, major_axis_index]
             
@@ -298,10 +263,21 @@ def plot_major_axes(points: np.ndarray, cell_types: np.ndarray, title: str, dura
             polygon = voronoi.vertices[region]
             plot.ax.fill(*zip(*polygon), alpha=0.6, color="orange", edgecolor="black")
 
+            edges = np.roll(polygon, 1, axis=0) - polygon
+            perimeter = 0
+            q_tensor = np.zeros((2, 2))
+            for i in range(len(edges)):
+                len_edge = np.linalg.norm(edges[i])
+                unit_edge = edges[i] / len_edge
+
+                perimeter += len_edge
+                q_tensor += len_edge * (np.outer(unit_edge, unit_edge) - np.eye(2) / 2)
+
+            q_tensor /= perimeter
+
             center = points[multiciliated_index]
             centered_points = polygon - center 
-            covariance_matrix = np.cov(centered_points, rowvar=False)
-            eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
+            eigenvalues, eigenvectors = np.linalg.eigh(q_tensor)
             major_axis_index = np.argmax(eigenvalues)
             major_axis = eigenvectors[:, major_axis_index]
             
@@ -350,10 +326,21 @@ def plot_avg_major_axes(points: np.ndarray, cell_types: np.ndarray, adjacency_ma
 
             major_axes = []
             for neighbour in np.where(adjacency_matrix[basic_index] == 1)[0]:
+                edges = np.roll(polygon, 1, axis=0) - polygon
+                perimeter = 0
+                q_tensor = np.zeros((2, 2))
+                for i in range(len(edges)):
+                    len_edge = np.linalg.norm(edges[i])
+                    unit_edge = edges[i] / len_edge
+
+                    perimeter += len_edge
+                    q_tensor += len_edge * (np.outer(unit_edge, unit_edge) - np.eye(2) / 2)
+
+                q_tensor /= perimeter
+
                 center = points[neighbour] 
                 centered_points = polygon - center 
-                covariance_matrix = np.cov(centered_points, rowvar=False)
-                eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
+                eigenvalues, eigenvectors = np.linalg.eigh(q_tensor)
                 major_axis_index = np.argmax(eigenvalues)
                 major_axis = eigenvectors[:, major_axis_index]
                 major_axes.append(major_axis)    
@@ -378,10 +365,21 @@ def plot_avg_major_axes(points: np.ndarray, cell_types: np.ndarray, adjacency_ma
 
             major_axes = []
             for neighbour in np.where(adjacency_matrix[multiciliated_index] == 1)[0]:
+                edges = np.roll(polygon, 1, axis=0) - polygon
+                perimeter = 0
+                q_tensor = np.zeros((2, 2))
+                for i in range(len(edges)):
+                    len_edge = np.linalg.norm(edges[i])
+                    unit_edge = edges[i] / len_edge
+
+                    perimeter += len_edge
+                    q_tensor += len_edge * (np.outer(unit_edge, unit_edge) - np.eye(2) / 2)
+
+                q_tensor /= perimeter
+
                 center = points[neighbour] 
                 centered_points = polygon - center 
-                covariance_matrix = np.cov(centered_points, rowvar=False)
-                eigenvalues, eigenvectors = np.linalg.eigh(covariance_matrix)
+                eigenvalues, eigenvectors = np.linalg.eigh(q_tensor)
                 major_axis_index = np.argmax(eigenvalues)
                 major_axis = eigenvectors[:, major_axis_index]
                 major_axes.append(major_axis)    
@@ -496,4 +494,128 @@ def plot_shape_factor_histogram(shape_factors: np.ndarray, title: str, duration:
     if auto:
         plt.show()
         plt.pause(duration)
+
+def plot_anisotropy_histogram(points: np.ndarray, cell_types: np.ndarray, title: str, duration: float, plot: TissuePlot, x_lim: int = 0, y_lim: int = 0, information: str = "", auto: bool = True):
+    plot.ax.clear()
+
+    voronoi = Voronoi(points)
+    non_boundary_points = np.where(cell_types != 1)[0]
+
+    anisotropies = []
+    for non_boundary_point in non_boundary_points:
+        region = voronoi.regions[voronoi.point_region[non_boundary_point]]
+        polygon = voronoi.vertices[region]
+
+        edges = np.roll(polygon, 1, axis=0) - polygon
+        perimeter = 0
+        q_tensor = np.zeros((2, 2))
+        for i in range(len(edges)):
+            len_edge = np.linalg.norm(edges[i])
+            unit_edge = edges[i] / len_edge
+
+            perimeter += len_edge
+            q_tensor += len_edge * (np.outer(unit_edge, unit_edge) - np.eye(2) / 2)
+
+        q_tensor /= perimeter
+        anisotropies.append(np.sqrt(2 * np.trace(np.square(q_tensor))))
+
+    plot.ax.hist(anisotropies, bins=50)
     
+    plot.information_box.set_text(information)
+    if plot.colourbar:
+        if plot.colourbar.ax.get_visible():
+            plot.colourbar.ax.set_visible(False)
+            ax_pos = plot.ax.get_position()
+            plot.ax.set_position([ax_pos.x0, ax_pos.y0, ax_pos.width + 0.1, ax_pos.height])
+
+    plot.ax.set_title(title)
+    
+    if auto:
+        plt.show()
+        plt.pause(duration)
+
+def plot_Q_divergence(points: np.ndarray, cell_types: np.ndarray, title: str, duration: float, plot: TissuePlot, x_lim: int = 0, y_lim: int = 0, information: str = "", auto: bool = True):
+    plot.ax.clear()
+
+    voronoi = Voronoi(points)
+
+    non_boundary_indices = np.where(cell_types != 1)[0]
+    non_boundary_points = points[non_boundary_indices]
+    
+    q_tensors = []
+    for non_boundary_index in non_boundary_indices:
+        region = voronoi.regions[voronoi.point_region[non_boundary_index]]
+        polygon = voronoi.vertices[region]
+
+        edges = np.roll(polygon, 1, axis=0) - polygon
+        perimeter = 0
+        q_tensor = np.zeros((2, 2))
+        for i in range(len(edges)):
+            len_edge = np.linalg.norm(edges[i])
+            unit_edge = edges[i] / len_edge
+
+            perimeter += len_edge
+            q_tensor += len_edge * (np.outer(unit_edge, unit_edge) - np.eye(2) / 2)
+
+        q_tensor /= perimeter
+        q_tensors.append(q_tensor)
+
+    q_tensors = np.array(q_tensors)
+
+    x_min, y_min = np.min(non_boundary_points, axis=0)
+    x_max, y_max = np.max(non_boundary_points, axis=0)
+
+    num_points_x = 50
+    num_points_y = 50
+
+    grid_x, grid_y = np.mgrid[x_min:x_max:num_points_x*1j, y_min:y_max:num_points_y*1j]
+
+    q_tensor_xx = griddata(non_boundary_points, q_tensors[:, 0, 0], (grid_x, grid_y), method="cubic")
+    q_tensor_xy = griddata(non_boundary_points, q_tensors[:, 0, 1], (grid_x, grid_y), method="cubic")
+    q_tensor_yx = griddata(non_boundary_points, q_tensors[:, 1, 0], (grid_x, grid_y), method="cubic")
+    q_tensor_yy = griddata(non_boundary_points, q_tensors[:, 1, 1], (grid_x, grid_y), method="cubic")
+    
+    xx_dx = np.gradient(q_tensor_xx, axis=0)
+    xy_dx = np.gradient(q_tensor_xy, axis=0)
+    yx_dy = np.gradient(q_tensor_yx, axis=1)
+    yy_dy = np.gradient(q_tensor_yy, axis=1)
+
+    div_x = xx_dx + yx_dy
+    div_y = xy_dx + yy_dy
+
+    divergence_magnitude = np.sqrt(div_x**2 + div_y**2)
+
+    basic_indices = np.where(cell_types == 0)[0]
+    boundary_indices = np.where(cell_types == 1)[0]
+    boundary_points = points[boundary_indices]
+    multiciliated_indices = np.where(cell_types == 2)[0]
+
+    for basic_index in basic_indices:
+        region = voronoi.regions[voronoi.point_region[basic_index]]
+        if -1 not in region:
+            polygon = voronoi.vertices[region]
+            plot.ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey", edgecolor="black")
+
+    for multiciliated_index in multiciliated_indices:
+        region = voronoi.regions[voronoi.point_region[multiciliated_index]]
+        if -1 not in region:
+            polygon = voronoi.vertices[region]
+            plot.ax.fill(*zip(*polygon), alpha=0.6, color="orange", edgecolor="black")
+
+    plot.ax.scatter(boundary_points[:, 0], boundary_points[:, 1], s=20, color="green")   
+
+    #plot.ax.contourf(grid_x, grid_y, divergence_magnitude, levels=50)
+    plot.ax.quiver(grid_x, grid_y, div_x, div_y, color="red")
+    
+    plot.information_box.set_text(information)
+    if plot.colourbar:
+        if plot.colourbar.ax.get_visible():
+            plot.colourbar.ax.set_visible(False)
+            ax_pos = plot.ax.get_position()
+            plot.ax.set_position([ax_pos.x0, ax_pos.y0, ax_pos.width + 0.1, ax_pos.height])
+
+    plot.ax.set_title(title)
+    
+    if auto:
+        plt.show()
+        plt.pause(duration)

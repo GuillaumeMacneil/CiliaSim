@@ -75,8 +75,14 @@ class LoadedTissue():
 
             if closest == None:
                 self.tissue.set_flow([0, 0], 0)
+                self.tissue.set_uniform_cilia_forces([0, 0], 0)
             else:
-                self.tissue.set_flow(self.force_states[closest][1], self.force_states[closest][2])
+                for key in self.force_states[closest].keys():
+                    int_key = int(key)
+                    if int_key == -1:
+                        self.tissue.set_flow(self.force_states[closest][key], 1)
+                    else:
+                        self.tissue.add_cilia_force(int_key, self.force_states[closest][key])
 
             self.current_it = iteration
         else:
@@ -89,43 +95,52 @@ class LoadedTissue():
         self.tissue.simulate(title, iterations, plotting=plotting)
 
     def plot_tissue(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
-        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
         plot_tissue(self.tissue.cell_points, self.tissue.cell_types, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information, auto=auto)
 
     def plot_springs(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
-        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
         plot_springs(self.tissue.cell_points, self.tissue.cell_types, self.tissue.adjacency_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information, auto=auto)
 
     def plot_force_vectors_rel(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
-        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
         self.tissue.calculate_force_matrix()
         plot_force_vectors_rel(self.tissue.cell_points, self.tissue.cell_types, self.tissue.force_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information, auto=auto)
 
     def plot_force_vectors_abs(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
-        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
         self.tissue.calculate_force_matrix()
         plot_force_vectors_abs(self.tissue.cell_points, self.tissue.cell_types, self.tissue.force_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information, auto=auto)
 
     def plot_major_axes(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
-        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
         plot_major_axes(self.tissue.cell_points, self.tissue.cell_types, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information, auto=auto)
 
     def plot_avg_major_axes(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
-        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
         plot_avg_major_axes(self.tissue.cell_points, self.tissue.cell_types, self.tissue.adjacency_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information, auto=auto)
 
     def plot_area_deltas(self, title: str, duration: float, auto: bool = True):
-        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
         plot_area_delta(self.tissue.cell_points, self.tissue.cell_types, self.tissue.target_cell_area, title, duration, self.tissue.plot, information=information, auto=auto)
         
     def plot_neighbour_histogram(self, title: str, duration: float, auto: bool = True):
-        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
         plot_neighbour_histogram(self.tissue.adjacency_matrix, title, duration, self.tissue.plot, information=information, auto=auto)
 
     def plot_shape_factor_histogram(self, title: str, duration: float, auto: bool = True):
-        information = f"Iteration: {self.current_it}\nCilia force magnitude: {self.tissue.flow_magnitude}\nCilia force direction: {self.tissue.flow_direction}"
+        information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
         shape_factors = self.tissue.calculate_shape_factors()
         plot_shape_factor_histogram(shape_factors, title, duration, self.tissue.plot, information=information, auto=auto)
+
+    def plot_anisotropy_histogram(self, title: str, duration: float, auto: bool = True):
+        information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
+        plot_anisotropy_histogram(self.tissue.cell_points, self.tissue.cell_types, title, duration, self.tissue.plot, information=information, auto=auto)
+
+    def plot_Q_divergence(self, title: str, duration: float, auto: bool = True):
+        information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
+        plot_Q_divergence(self.tissue.cell_points, self.tissue.cell_types, title, duration, self.tissue.plot, information=information, auto=auto)
+
 
     def interactive_tissue(self, title: str, start_iteration: int = 0, end_iteration: int = 0):
         def select_plot(plot_type: int):
@@ -147,6 +162,11 @@ class LoadedTissue():
                 self.plot_neighbour_histogram(title, duration=0.1, auto=False)
             elif plot_type == 8:
                 self.plot_shape_factor_histogram(title, duration=0.1, auto=False)
+            elif plot_type == 9:
+                self.plot_anisotropy_histogram(title, duration=0.1, auto=False)
+            elif plot_type == 10:
+                self.plot_Q_divergence(title, duration=0.1, auto=False)
+
 
         if start_iteration == 0:
             start_iteration = int(self.min_it)
@@ -187,6 +207,10 @@ class LoadedTissue():
         neighbour_button = Button(neighbour_button_axis, "Conn.")
         shape_factor_button_axis = self.tissue.plot.fig.add_axes([0.25, 0.05, 0.09, 0.03])
         shape_factor_button = Button(shape_factor_button_axis, "S. Factor")
+        anisotropy_button_axis = self.tissue.plot.fig.add_axes([0.35, 0.05, 0.09, 0.03])
+        anisotropy_button = Button(anisotropy_button_axis, "Anisotropy")
+        divergence_button_axis = self.tissue.plot.fig.add_axes([0.45, 0.05, 0.09, 0.03])
+        divergence_button = Button(divergence_button_axis, "Q Div.")
 
         def button_plot(button_type: int):
             global plot_type
@@ -203,6 +227,8 @@ class LoadedTissue():
         area_button.on_clicked(lambda _: button_plot(6))
         neighbour_button.on_clicked(lambda _: button_plot(7))
         shape_factor_button.on_clicked(lambda _: button_plot(8))
+        anisotropy_button.on_clicked(lambda _: button_plot(9))
+        divergence_button.on_clicked(lambda _: button_plot(10))
 
         def update_slider(_):
             global plot_type
@@ -269,6 +295,11 @@ class LoadedTissue():
                 self.plot_neighbour_histogram(title, duration=0.1)
             elif plot_type == 8:
                 self.plot_shape_factor_histogram(title, duration=0.1)
+            elif plot_type == 9:
+                self.plot_anisotropy_histogram(title, duration=0.1)
+            elif plot_type == 10:
+                self.plot_Q_divergence(title, duration=0.1, auto=False)
+
 
     def plot_energy_progression(self, title: str):
         fig, ax = plt.subplots()
