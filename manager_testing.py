@@ -2,7 +2,7 @@ from manager import Manager
 
 def main():
     manager = Manager()
-    manager.read_from_file("saved_simulations/test18.json")
+    manager.read_from_file("saved_simulations/test19.json")
     manager.interactive_plot(0, "Interactive Plot")
 #    manager.duplicate_tissue(0)
 #    manager.duplicate_tissue(0)

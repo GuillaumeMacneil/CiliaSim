@@ -2,7 +2,7 @@ from functions import *
 from plotting import *
 
 import numpy as np
-from scipy.spatial import Voronoi, Delaunay
+from scipy.spatial import Voronoi, Delaunay, KDTree
 from scipy.stats import qmc
 import matplotlib.pyplot as plt
 import json
@@ -95,14 +95,13 @@ class Tissue():
         self.num_cells = len(self.cell_points)
         self.generate_cells()
 
-
     def generate_cells(self, specialize: bool = True):
         delaunay = Delaunay(self.cell_points)
         neighbour_vertices = delaunay.vertex_neighbor_vertices
 
         self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells))
         self.cell_types = np.zeros(self.num_cells)
-
+    
         for i in range(self.num_cells):
             neighbours = neighbour_vertices[1][neighbour_vertices[0][i]:neighbour_vertices[0][i+1]]
             self.adjacency_matrix[i][neighbours] = 1
@@ -110,10 +109,26 @@ class Tissue():
         if specialize:
             voronoi = Voronoi(self.cell_points)
 
-            for i in range(self.num_cells):
-                region_index = voronoi.point_region[i]
-                if -1 in voronoi.regions[region_index]:
-                   self.cell_types[i] = 1
+            x_min, y_min = np.min(self.cell_points, axis=0) 
+            x_max, y_max = np.max(self.cell_points, axis=0) 
+
+            kd_tree = KDTree(self.cell_points)
+            num_edge_comparison_points = 50
+
+            top_edge = np.linspace([x_min, y_max], [x_max, y_max], num_edge_comparison_points)
+            right_edge = np.linspace([x_max, y_max], [x_max, y_min], num_edge_comparison_points)
+            bottom_edge = np.linspace([x_max, y_min], [x_min, y_min], num_edge_comparison_points)
+            left_edge = np.linspace([x_min, y_min], [x_min, y_max], num_edge_comparison_points)
+
+            for edge in [top_edge, right_edge, bottom_edge, left_edge]:
+                for comparison_point in edge:
+                    _, point_index = kd_tree.query(comparison_point)
+                    self.cell_types[point_index] = 1
+
+            #for i in range(self.num_cells):
+            #    region_index = voronoi.point_region[i]
+            #    if -1 in voronoi.regions[region_index]:
+            #       self.cell_types[i] = 1
 
             if self.center_only:
                 area_center = np.array([self.x / 2, self.y / 2])
