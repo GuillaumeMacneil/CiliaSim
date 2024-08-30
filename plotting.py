@@ -250,12 +250,13 @@ def plot_major_axes(points: np.ndarray, cell_types: np.ndarray, title: str, dura
             major_axis = eigenvectors[:, major_axis_index]
             
             projections = np.dot(centered_points, major_axis)
-            length = projections.max() - projections.min()
+            length = (projections.max() - projections.min()) * abs(10 * eigenvalues[major_axis_index] )
 
             positive_end = center + (length / 2) * major_axis
             negative_end = center - (length / 2) * major_axis
 
             plot.ax.plot([negative_end[0], positive_end[0]], [negative_end[1], positive_end[1]], linewidth=2, color="red")
+            #plot.ax.quiver(center[0], center[1], major_axis[0], major_axis[1], color="red")
 
     for multiciliated_index in multiciliated_indices:
         region = voronoi.regions[voronoi.point_region[multiciliated_index]]
@@ -282,7 +283,7 @@ def plot_major_axes(points: np.ndarray, cell_types: np.ndarray, title: str, dura
             major_axis = eigenvectors[:, major_axis_index]
             
             projections = np.dot(centered_points, major_axis)
-            length = projections.max() - projections.min()
+            length = (projections.max() - projections.min()) * abs(10 * eigenvalues[major_axis_index])
 
             positive_end = center + (length / 2) * major_axis
             negative_end = center - (length / 2) * major_axis
@@ -619,3 +620,44 @@ def plot_Q_divergence(points: np.ndarray, cell_types: np.ndarray, title: str, du
     if auto:
         plt.show()
         plt.pause(duration)
+
+def plot_boundary_cycle(points: np.ndarray, cell_types: np.ndarray, boundary_cycle: np.ndarray, title: str, duration: float, plot: TissuePlot, x_lim: int = 0, y_lim: int = 0, information: str = "", auto: bool = True):
+    plot.ax.clear()
+
+    looped_boundary_cycle = np.append(boundary_cycle, boundary_cycle[0])
+    basic_indices = np.where(cell_types == 0)[0]
+    multiciliated_indices = np.where(cell_types == 2)[0]
+
+    voronoi = Voronoi(points)
+
+    for basic_index in basic_indices:
+        region = voronoi.regions[voronoi.point_region[basic_index]]
+        if -1 not in region:
+            polygon = voronoi.vertices[region]
+            plot.ax.fill(*zip(*polygon), alpha=0.6, color="lightgrey", edgecolor="black")
+
+    for multiciliated_index in multiciliated_indices:
+        region = voronoi.regions[voronoi.point_region[multiciliated_index]]
+        if -1 not in region:
+            polygon = voronoi.vertices[region]
+            plot.ax.fill(*zip(*polygon), alpha=0.6, color="orange", edgecolor="black")
+
+    plot.ax.plot(*zip(*points[looped_boundary_cycle]), color="red")
+
+    plot.information_box.set_text(information)
+    if plot.colourbar:
+        if plot.colourbar.ax.get_visible():
+            plot.colourbar.ax.set_visible(False)
+            ax_pos = plot.ax.get_position()
+            plot.ax.set_position([ax_pos.x0, ax_pos.y0, ax_pos.width + 0.1, ax_pos.height])
+
+    if x_lim and y_lim:
+        plt.xlim([0, x_lim])
+        plt.ylim([0, y_lim])
+
+    plot.ax.set_title(title)
+
+    if auto:
+        plt.show()
+        plt.pause(duration)
+

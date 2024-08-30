@@ -4,6 +4,7 @@ from plotting import *
 import numpy as np
 from scipy.spatial import Voronoi, Delaunay, KDTree
 from scipy.stats import qmc
+from scipy.sparse import csr_matrix
 import matplotlib.pyplot as plt
 import json
 from collections import defaultdict
@@ -20,19 +21,22 @@ class Tissue():
 
         self.global_iteration = 0
         self.center_only = False
+        self.plotting = False
         self.plot = TissuePlot()
         self.plot_type = 0
 
         self.cell_points = np.array([])
         self.cell_types = np.array([])
         self.target_areas = np.array([])
-        self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells))
+        self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells), dtype=np.int32)
         self.force_matrix = np.zeros((self.num_cells, self.num_cells, 2))
         self.distance_matrix = np.zeros((self.num_cells, self.num_cells))
+        self.boundary_cycle = np.array([], dtype=np.int32)
+        self.voronoi = None
 
         self.target_spring_length = 1
         self.target_cell_area = np.sqrt(3) / 2
-        self.critical_length_delta = 0.1
+        self.critical_length_delta = 0.2
 
         self.net_energy = np.array([])
 
@@ -53,6 +57,9 @@ class Tissue():
     def set_tracking(self):
         self.tracking = True
 
+    def set_plotting(self):
+        self.plotting = True
+
     def random_layout(self):
         points = []
         radius = 1 / np.sqrt(self.num_cells)
@@ -67,9 +74,11 @@ class Tissue():
 
         # This is a hacky method of (almost always) ensuring that the random tissue is constrained by boundary points
         self.generate_cells(specialize=False)        
-        self.simulate("Random Layout Annealing (Tension Only, No Specialization)", 1500, 100, tension_only=True)
+        self.simulate("Random Layout Annealing (Tension Only, No Specialization)", 1500, 100, tension_only=True, plotting=self.plotting)
         self.generate_cells()        
-        self.simulate("Random Layout Annealing", 1500, 100)
+        self.set_plot_boundary_cycle()
+        self.simulate("Random Layout Annealing", 1500, 100, plotting=self.plotting)
+        self.set_plot_basic()
         self.global_iteration = 0
 
     def hexagonal_grid_layout(self):
@@ -107,8 +116,6 @@ class Tissue():
             self.adjacency_matrix[i][neighbours] = 1
 
         if specialize:
-            voronoi = Voronoi(self.cell_points)
-
             x_min, y_min = np.min(self.cell_points, axis=0) 
             x_max, y_max = np.max(self.cell_points, axis=0) 
 
@@ -124,11 +131,8 @@ class Tissue():
                 for comparison_point in edge:
                     _, point_index = kd_tree.query(comparison_point)
                     self.cell_types[point_index] = 1
-
-            #for i in range(self.num_cells):
-            #    region_index = voronoi.point_region[i]
-            #    if -1 in voronoi.regions[region_index]:
-            #       self.cell_types[i] = 1
+                    if not np.any(self.boundary_cycle == point_index):
+                        self.boundary_cycle = np.append(self.boundary_cycle, point_index)
 
             if self.center_only:
                 area_center = np.array([self.x / 2, self.y / 2])
@@ -234,17 +238,26 @@ class Tissue():
     def set_plot_shape_factor_histogram(self):
         self.plot_type = 8
 
-    def calculate_force_matrix(self, tension_only: bool = False):
-        delaunay = Delaunay(self.cell_points)
-        voronoi = Voronoi(self.cell_points)
+    def set_plot_anisotropy_histogram(self):
+        self.plot_type = 9
 
-        neighbour_vertices = delaunay.vertex_neighbor_vertices
+    def set_plot_Q_divergence(self):
+        self.plot_type = 10
+
+    def set_plot_boundary_cycle(self):
+        self.plot_type = 11
+
+    def calculate_force_matrix(self, tension_only: bool = False):
+        self.voronoi = Voronoi(self.cell_points)
 
         boundary_cells = np.where(self.cell_types == 1)
         self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells))
-        for i in range(self.num_cells):
-            neighbours = neighbour_vertices[1][neighbour_vertices[0][i]:neighbour_vertices[0][i+1]]
-            self.adjacency_matrix[i, neighbours] = 1
+        for ridge in self.voronoi.ridge_points:
+            i, j = ridge
+            self.adjacency_matrix[i, j] = 1
+            self.adjacency_matrix[j, i] = 1
+
+        csr_adjacency = csr_matrix(self.adjacency_matrix)
 
         #delete_list = []
         #for cell in boundary_cells[0]:
@@ -266,7 +279,7 @@ class Tissue():
         #boundary_cells = np.setdiff1d(boundary_cells, delete_list)
 
         boundary_cells = boundary_cells[0]
-        for cell in boundary_cells:
+        """ for cell in boundary_cells:
             cell_neighbours = np.where(self.adjacency_matrix[cell] == 1)
             boundary_neighbours = np.intersect1d(cell_neighbours, boundary_cells)
             differences = self.cell_points[boundary_neighbours] - self.cell_points[cell]
@@ -276,7 +289,7 @@ class Tissue():
 
             for neighbour in furthest_neighbours:
                 self.adjacency_matrix[cell, neighbour] = 0
-                self.adjacency_matrix[neighbour, cell] = 0
+                self.adjacency_matrix[neighbour, cell] = 0 """
         
         magnitude_matrix = np.zeros((self.num_cells, self.num_cells))
         self.distance_matrix = np.zeros((self.num_cells, self.num_cells))
@@ -286,7 +299,8 @@ class Tissue():
         visited = []
         for i in range(self.num_cells):
             # Calculate spring forces
-            neighbours = np.where(self.adjacency_matrix[i] == 1)
+            #neighbours = np.nonzero(self.adjacency_matrix[i])
+            neighbours = csr_adjacency.indices[csr_adjacency.indptr[i]:csr_adjacency.indptr[i+1]]
             neighbour_positions = self.cell_points[neighbours]
             differences = neighbour_positions - self.cell_points[i]
             distances = np.linalg.norm(differences, axis=1)
@@ -295,9 +309,9 @@ class Tissue():
             self.distance_matrix[i, neighbours] = distances
             unit_vector_matrix[i, neighbours] = unit_vectors
 
-            energy_distances = distances[~np.isin(neighbours, visited)[0]]
+            """ energy_distances = distances[~np.isin(neighbours, visited)[0]]
             energy_contribution = 0.5 * (energy_distances - self.target_spring_length) ** 2
-            net_energy += np.sum(energy_contribution)
+            net_energy += np.sum(energy_contribution) """
             visited.append(i)
 
             force_magnitudes = self.target_spring_length - distances
@@ -308,14 +322,15 @@ class Tissue():
 
         if not tension_only:
             for i in np.where(self.cell_types == 1)[0]:
-                neighbours = np.where(self.adjacency_matrix[i] == 1)
+                #neighbours = np.nonzero(self.adjacency_matrix[i])
+                neighbours = csr_adjacency.indices[csr_adjacency.indptr[i]:csr_adjacency.indptr[i+1]]
                 magnitude_matrix[i, neighbours] /= 10
             
             for i in np.where(self.cell_types != 1)[0]:
                 # Calculate pressure forces
-                neighbours = np.where(self.adjacency_matrix[i] == 1)
-                region_index = voronoi.point_region[i]
-                area = polygon_area(voronoi.vertices[voronoi.regions[region_index]])
+                #neighbours = np.nonzero(self.adjacency_matrix[i])
+                neighbours = csr_adjacency.indices[csr_adjacency.indptr[i]:csr_adjacency.indptr[i+1]]
+                area = polygon_area(self.voronoi.vertices[self.voronoi.regions[self.voronoi.point_region[i]]])
                 area_difference = (self.target_areas[i] - area)
                 net_energy += 0.5 * area_difference ** 2
 
@@ -332,11 +347,10 @@ class Tissue():
             self.net_energy = np.append(self.net_energy, net_energy)
 
     def calculate_shape_factors(self):
-        voronoi = Voronoi(self.cell_points)
         non_boundary_cells = np.where(self.cell_types != 1)[0]
         shape_factors = []
         for cell in non_boundary_cells:
-            vertices = voronoi.vertices[voronoi.regions[voronoi.point_region[cell]]]
+            vertices = self.voronoi.vertices[self.voronoi.regions[self.voronoi.point_region[cell]]]
             area = polygon_area(vertices)
             perimeter = polygon_perimeter(vertices)
             shape_factors.append(perimeter / np.sqrt(area))
@@ -344,24 +358,40 @@ class Tissue():
         return np.array(shape_factors)
 
     def evaluate_boundary(self):
-        # Determine which cells are boundary cells and the edges between them
-        boundary_cells = np.where(self.cell_types == 1)
-        visited = []
-        edges = []
-        for i in boundary_cells[0]:
-            for neighbour in np.where(self.adjacency_matrix[i] == 1)[0]:
-                if neighbour in boundary_cells[0] and neighbour not in visited:
-                    edges.append((i, neighbour))
-                
-                visited.append(i)
+        if self.boundary_cycle.size == 0:
+            return 
 
+        # FIXME: Determine which boundary points are unnecessary
+        #kd_tree = KDTree(self.cell_points[self.boundary_cycle])
+        #differ_mask = np.zeros(len(self.boundary_cycle))
+        #for i in range(len(self.boundary_cycle)):
+        #    _, indices = kd_tree.query(self.cell_points[self.boundary_cycle[i]], k=3)
+        #    closest = self.boundary_cycle[indices[1:]]
+
+        #    if i == 0:
+        #        lr_points = [self.boundary_cycle[len(self.boundary_cycle) - 1], self.boundary_cycle[i+1]]
+        #    elif i == len(self.boundary_cycle) - 1:
+        #        lr_points = [self.boundary_cycle[i-1], self.boundary_cycle[0]]
+        #    else:   
+        #        lr_points = [self.boundary_cycle[i-1], self.boundary_cycle[i+1]]
+            
+        #    if closest[0] not in lr_points or closest[1] not in lr_points:
+        #        print(f"{lr_points} -> {closest}")
+            
         # Add additional boundary cells
-        for a, b in edges:
-            shared_cells = np.intersect1d(np.where(self.adjacency_matrix[a] == 1)[0], np.where(self.adjacency_matrix[b] == 1)[0])
-            shared_non_boundary = np.setdiff1d(shared_cells, boundary_cells)
+        edges = np.stack((self.boundary_cycle, np.roll(self.boundary_cycle, shift=-1)),axis=1)
+        new_boundary_cells = []
+        csr_adjacency = csr_matrix(self.adjacency_matrix)
+
+        all_neighbours = [set(csr_adjacency.indices[csr_adjacency.indptr[i]:csr_adjacency.indptr[i+1]]) for i in range(csr_adjacency.shape[0])]
+
+        for i in range(len(edges)):
+            a, b = edges[i]
+            shared_cells = all_neighbours[a] & all_neighbours[b]
+            shared_non_boundary = shared_cells - set(self.boundary_cycle)
             if len(shared_non_boundary) == 0:
                 continue
-            c = int(shared_non_boundary[0])
+            c = int(next(iter(shared_non_boundary)))
 
             a_point = self.cell_points[a]
             b_point = self.cell_points[b]
@@ -384,6 +414,7 @@ class Tissue():
                 self.cell_points = np.append(self.cell_points, [reflected_point], axis=0)
                 self.cell_types = np.append(self.cell_types, 1)
                 self.target_ares = np.append(self.target_areas, 0)
+                new_boundary_cells.append([i+1, len(self.cell_points) - 1])
                 
                 new_row = np.zeros(self.num_cells)
                 new_row[[a, b, c]] = 1
@@ -392,6 +423,10 @@ class Tissue():
                 new_column = np.zeros(self.num_cells)
                 new_column[[a, b, c]] = 1
                 self.adjacency_matrix = np.hstack([self.adjacency_matrix, new_column[:, np.newaxis]])
+
+        new_boundary_cells = reversed(new_boundary_cells)
+        for new_boundary_cell in new_boundary_cells:
+            self.boundary_cycle = np.insert(self.boundary_cycle, new_boundary_cell[0], new_boundary_cell[1])
 
     def increment_global_iteration(self, title: str, x_lim: int = 0, y_lim: int = 0, plot_frequency: int = 100):
         if self.global_iteration % plot_frequency == 0:
@@ -414,6 +449,12 @@ class Tissue():
                 plot_neighbour_histogram(self.adjacency_matrix, title, 0.5, self.plot, information=information)
             elif self.plot_type == 8:
                 plot_shape_factor_histogram(self.calculate_shape_factors(), title, 0.5, self.plot, information=information)
+            elif self.plot_type == 9:
+                plot_anisotropy_histogram(self.cell_points, self.cell_types, title, 0.5, self.plot, information=information)
+            elif self.plot_type == 10:
+                plot_Q_divergence(self.cell_points, self.cell_types, title, 0.5, self.plot, information=information)
+            elif self.plot_type == 11:
+                plot_boundary_cycle(self.cell_points, self.cell_types, self.boundary_cycle, title, 0.5, self.plot, information=information)
 
         self.global_iteration += 1
 
