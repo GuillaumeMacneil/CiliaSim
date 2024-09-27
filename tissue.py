@@ -29,6 +29,7 @@ class Tissue():
         self.cell_types = np.array([])
         self.target_areas = np.array([])
         self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells), dtype=np.int32)
+        self.comp_adjacency_matrix = None
         self.force_matrix = np.zeros((self.num_cells, self.num_cells, 2))
         self.distance_matrix = np.zeros((self.num_cells, self.num_cells))
         self.boundary_cycle = np.array([], dtype=np.int32)
@@ -73,11 +74,9 @@ class Tissue():
         self.num_cells = len(self.cell_points)
 
         # This is a hacky method of (almost always) ensuring that the random tissue is constrained by boundary points
-        self.generate_cells(specialize=False)        
-        self.simulate("Random Layout Annealing (Tension Only, No Specialization)", 1500, 100, tension_only=True, plotting=self.plotting)
         self.generate_cells()        
         self.set_plot_boundary_cycle()
-        self.simulate("Random Layout Annealing", 1500, 100, plotting=self.plotting)
+        self.simulate("Random Layout Annealing", 2000, 100, plotting=self.plotting)
         self.set_plot_basic()
         self.global_iteration = 0
 
@@ -160,21 +159,21 @@ class Tissue():
 
             self.evaluate_boundary()
 
-            #target_area = 0
-            #count = 0
-            #for i in range(len(cell_points)):
-            #    if type_mask[i] != 1:
-            #        region_index = voronoi.point_region[i]
-            #        target_area += polygon_area(voronoi.vertices[voronoi.regions[region_index]])
-            #        count += 1
-            #target_area /= count
+        #target_area = 0
+        #count = 0
+        #for i in range(len(cell_points)):
+        #    if type_mask[i] != 1:
+        #        region_index = voronoi.point_region[i]
+        #        target_area += polygon_area(voronoi.vertices[voronoi.regions[region_index]])
+        #        count += 1
+        #target_area /= count
 
-            self.target_areas = np.zeros(self.num_cells) 
-            for i in range(self.num_cells):
-                if self.cell_types[i] != 1:
-                    self.target_areas[i] = self.target_cell_area
+        self.target_areas = np.zeros(self.num_cells) 
+        for i in range(self.num_cells):
+            if self.cell_types[i] != 1:
+                self.target_areas[i] = self.target_cell_area
 
-            self.set_uniform_cilia_forces([0, 0], 0)
+        self.set_uniform_cilia_forces([0, 0], 0)
    
     def add_cilia_force(self, cell_index: int, force: list):
         self.cilia_forces[cell_index] = np.array(force)
@@ -248,59 +247,16 @@ class Tissue():
         self.plot_type = 11
 
     def calculate_force_matrix(self, tension_only: bool = False):
-        self.voronoi = Voronoi(self.cell_points)
-
-        boundary_cells = np.where(self.cell_types == 1)
-        self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells))
-        for ridge in self.voronoi.ridge_points:
-            i, j = ridge
-            self.adjacency_matrix[i, j] = 1
-            self.adjacency_matrix[j, i] = 1
-
-        csr_adjacency = csr_matrix(self.adjacency_matrix)
-
-        #delete_list = []
-        #for cell in boundary_cells[0]:
-        #    cell_neighbours = np.where(self.adjacency_matrix[cell] == 1)
-        #    boundary_neighbours = np.intersect1d(cell_neighbours, boundary_cells)
-            
-        #    if len(cell_neighbours) == len(boundary_neighbours):
-        #        delete_list.append(cell)
-        #        for neighbour in boundary_neighbours:
-        #            self.adjacency_matrix[neighbour, cell] = 0
-
-        #for cell in delete_list:
-        #    self.cell_points = np.delete(self.cell_points, cell)
-        #    self.cell_types = np.delete(self.cell_types, cell)
-        #    self.adjacency_matrix = np.delete(self.adjacency_matrix, cell, axis=0)
-        #    self.adjacency_matrix = np.delete(self.adjacency_matrix, cell, axis=1)
-        #    self.num_cells -= 1
-#
-        #boundary_cells = np.setdiff1d(boundary_cells, delete_list)
-
-        boundary_cells = boundary_cells[0]
-        """ for cell in boundary_cells:
-            cell_neighbours = np.where(self.adjacency_matrix[cell] == 1)
-            boundary_neighbours = np.intersect1d(cell_neighbours, boundary_cells)
-            differences = self.cell_points[boundary_neighbours] - self.cell_points[cell]
-            distances = np.linalg.norm(differences, axis=1)
-            sorted_boundary_neighbours = boundary_neighbours[np.argsort(distances)]
-            furthest_neighbours = sorted_boundary_neighbours[2:]
-
-            for neighbour in furthest_neighbours:
-                self.adjacency_matrix[cell, neighbour] = 0
-                self.adjacency_matrix[neighbour, cell] = 0 """
-        
-        magnitude_matrix = np.zeros((self.num_cells, self.num_cells))
+        spring_matrix = np.zeros((self.num_cells, self.num_cells))
+        pressure_matrix = np.zeros((self.num_cells, self.num_cells))
         self.distance_matrix = np.zeros((self.num_cells, self.num_cells))
         unit_vector_matrix = np.zeros((self.num_cells, self.num_cells, 2))
 
-        net_energy = 0 
+        #net_energy = 0 
         visited = []
         for i in range(self.num_cells):
             # Calculate spring forces
-            #neighbours = np.nonzero(self.adjacency_matrix[i])
-            neighbours = csr_adjacency.indices[csr_adjacency.indptr[i]:csr_adjacency.indptr[i+1]]
+            neighbours = self.comp_adjacency_matrix.indices[self.comp_adjacency_matrix.indptr[i]:self.comp_adjacency_matrix.indptr[i+1]]
             neighbour_positions = self.cell_points[neighbours]
             differences = neighbour_positions - self.cell_points[i]
             distances = np.linalg.norm(differences, axis=1)
@@ -315,36 +271,28 @@ class Tissue():
             visited.append(i)
 
             force_magnitudes = self.target_spring_length - distances
-
-            magnitude_matrix[i, neighbours] += force_magnitudes
-
-        magnitude_matrix = np.clip(magnitude_matrix, -self.critical_length_delta, None)
-
-        if not tension_only:
-            for i in np.where(self.cell_types == 1)[0]:
-                #neighbours = np.nonzero(self.adjacency_matrix[i])
-                neighbours = csr_adjacency.indices[csr_adjacency.indptr[i]:csr_adjacency.indptr[i+1]]
-                magnitude_matrix[i, neighbours] /= 10
-            
-            for i in np.where(self.cell_types != 1)[0]:
-                # Calculate pressure forces
-                #neighbours = np.nonzero(self.adjacency_matrix[i])
-                neighbours = csr_adjacency.indices[csr_adjacency.indptr[i]:csr_adjacency.indptr[i+1]]
+            if self.cell_types[i] == 1:
+                force_magnitudes /= 10
+                spring_matrix[i, neighbours] += force_magnitudes
+            else:
+                spring_matrix[i, neighbours] += force_magnitudes
                 area = polygon_area(self.voronoi.vertices[self.voronoi.regions[self.voronoi.point_region[i]]])
                 area_difference = (self.target_areas[i] - area)
-                net_energy += 0.5 * area_difference ** 2
+                """ net_energy += 0.5 * area_difference ** 2 """
 
-                magnitude_matrix[i, neighbours] += area_difference / len(neighbours)
-                magnitude_matrix[neighbours, i] += area_difference / len(neighbours)
+                pressure_matrix[i, neighbours] += area_difference / len(neighbours)
+                pressure_matrix[neighbours, i] += area_difference / len(neighbours)
 
-        self.force_matrix = magnitude_matrix.T[:, :, np.newaxis] * unit_vector_matrix
+        spring_matrix = np.clip(spring_matrix, -self.critical_length_delta, None)
+
+        self.force_matrix = (spring_matrix + pressure_matrix).T[:, :, np.newaxis] * unit_vector_matrix
 
         # Calculate cilia and external force contributions
         for m_index in np.where(self.cell_types == 2)[0]:
             self.force_matrix[m_index, m_index] = self.cilia_forces[m_index] + self.flow_force          
 
-        if not tension_only:
-            self.net_energy = np.append(self.net_energy, net_energy)
+        """ if not tension_only:
+            self.net_energy = np.append(self.net_energy, net_energy) """
 
     def calculate_shape_factors(self):
         non_boundary_cells = np.where(self.cell_types != 1)[0]
@@ -358,32 +306,36 @@ class Tissue():
         return np.array(shape_factors)
 
     def evaluate_boundary(self):
+        self.voronoi = Voronoi(self.cell_points)
+
+        self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells))
+        for ridge in self.voronoi.ridge_points:
+            i, j = ridge
+            self.adjacency_matrix[i, j] = 1
+            self.adjacency_matrix[j, i] = 1
+
+        boundary_set = set(self.boundary_cycle)
+        for i in range(-1, len(self.boundary_cycle) - 1):
+            neighbours = np.nonzero(self.adjacency_matrix[self.boundary_cycle[i]])[0]
+            boundary_neighbours = boundary_set.intersection(neighbours)
+            goal_neighbours = [self.boundary_cycle[i-1], self.boundary_cycle[i+1]]
+            boundary_diff = boundary_neighbours.difference(goal_neighbours)
+            if boundary_diff:
+                boundary_neighbours = list(boundary_neighbours)
+                self.adjacency_matrix[self.boundary_cycle[i], boundary_neighbours] = 0
+                self.adjacency_matrix[boundary_neighbours, self.boundary_cycle[i]] = 0
+                self.adjacency_matrix[self.boundary_cycle[i], goal_neighbours] = 1
+                self.adjacency_matrix[goal_neighbours, self.boundary_cycle[i]] = 1
+
+        self.comp_adjacency_matrix = csr_matrix(self.adjacency_matrix)
+        all_neighbours = [set(self.comp_adjacency_matrix.indices[self.comp_adjacency_matrix.indptr[i]:self.comp_adjacency_matrix.indptr[i+1]]) for i in range(self.comp_adjacency_matrix.shape[0])]
+
         if self.boundary_cycle.size == 0:
             return 
-
-        # FIXME: Determine which boundary points are unnecessary
-        #kd_tree = KDTree(self.cell_points[self.boundary_cycle])
-        #differ_mask = np.zeros(len(self.boundary_cycle))
-        #for i in range(len(self.boundary_cycle)):
-        #    _, indices = kd_tree.query(self.cell_points[self.boundary_cycle[i]], k=3)
-        #    closest = self.boundary_cycle[indices[1:]]
-
-        #    if i == 0:
-        #        lr_points = [self.boundary_cycle[len(self.boundary_cycle) - 1], self.boundary_cycle[i+1]]
-        #    elif i == len(self.boundary_cycle) - 1:
-        #        lr_points = [self.boundary_cycle[i-1], self.boundary_cycle[0]]
-        #    else:   
-        #        lr_points = [self.boundary_cycle[i-1], self.boundary_cycle[i+1]]
-            
-        #    if closest[0] not in lr_points or closest[1] not in lr_points:
-        #        print(f"{lr_points} -> {closest}")
-            
+           
         # Add additional boundary cells
         edges = np.stack((self.boundary_cycle, np.roll(self.boundary_cycle, shift=-1)),axis=1)
         new_boundary_cells = []
-        csr_adjacency = csr_matrix(self.adjacency_matrix)
-
-        all_neighbours = [set(csr_adjacency.indices[csr_adjacency.indptr[i]:csr_adjacency.indptr[i+1]]) for i in range(csr_adjacency.shape[0])]
 
         for i in range(len(edges)):
             a, b = edges[i]
@@ -424,6 +376,8 @@ class Tissue():
                 new_column[[a, b, c]] = 1
                 self.adjacency_matrix = np.hstack([self.adjacency_matrix, new_column[:, np.newaxis]])
 
+        self.comp_adjacency_matrix = csr_matrix(self.adjacency_matrix)
+
         new_boundary_cells = reversed(new_boundary_cells)
         for new_boundary_cell in new_boundary_cells:
             self.boundary_cycle = np.insert(self.boundary_cycle, new_boundary_cell[0], new_boundary_cell[1])
@@ -461,6 +415,7 @@ class Tissue():
     def simulate(self, title: str, iterations: int = 5000, plot_frequency: int = 100, tension_only: bool = False, plotting: bool = True):
         plt.ion()
         for i in range(iterations):
+            self.evaluate_boundary()
             self.calculate_force_matrix(tension_only)
             total_force = np.sum(self.force_matrix, axis=0)
             self.cell_points += total_force * 0.95 * 0.01
@@ -472,8 +427,6 @@ class Tissue():
                 self.increment_global_iteration(title, x_lim=self.x, y_lim=self.y, plot_frequency=plot_frequency)
             else:
                 self.global_iteration += 1
-
-            self.evaluate_boundary()
             
     def write_to_file(self, path: str):
         json_data = {"parameters": {"x": self.x, "y": self.y, "cilia_density": self.density}, "cell_types": self.cell_types.tolist(), "target_areas": self.target_areas.tolist(), "force_states": self.force_states, "cell_states": self.cell_states, "net_energy": self.net_energy.tolist()}
