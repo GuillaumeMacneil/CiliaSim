@@ -73,12 +73,7 @@ class Tissue():
         self.cell_points = np.array(points)
         self.num_cells = len(self.cell_points)
 
-        # This is a hacky method of (almost always) ensuring that the random tissue is constrained by boundary points
         self.generate_cells()        
-        self.set_plot_boundary_cycle()
-        self.simulate("Random Layout Annealing", 2000, 100, plotting=self.plotting)
-        self.set_plot_basic()
-        self.global_iteration = 0
 
     def hexagonal_grid_layout(self):
         num_rings = int(np.floor(1/2 + np.sqrt(12 * self.num_cells - 3) / 6))
@@ -103,7 +98,7 @@ class Tissue():
         self.num_cells = len(self.cell_points)
         self.generate_cells()
 
-    def generate_cells(self, specialize: bool = True):
+    def generate_cells(self):
         delaunay = Delaunay(self.cell_points)
         neighbour_vertices = delaunay.vertex_neighbor_vertices
 
@@ -114,7 +109,6 @@ class Tissue():
             neighbours = neighbour_vertices[1][neighbour_vertices[0][i]:neighbour_vertices[0][i+1]]
             self.adjacency_matrix[i][neighbours] = 1
 
-        if specialize:
             x_min, y_min = np.min(self.cell_points, axis=0) 
             x_max, y_max = np.max(self.cell_points, axis=0) 
 
@@ -133,31 +127,29 @@ class Tissue():
                     if not np.any(self.boundary_cycle == point_index):
                         self.boundary_cycle = np.append(self.boundary_cycle, point_index)
 
-            if self.center_only:
-                area_center = np.array([self.x / 2, self.y / 2])
-                center_distances = []
-                for cell_point in self.cell_points:
-                    center_distances.append(np.sum((area_center - cell_point) ** 2))
+        if self.center_only:
+            area_center = np.array([self.x / 2, self.y / 2])
+            center_distances = []
+            for cell_point in self.cell_points:
+                center_distances.append(np.sum((area_center - cell_point) ** 2))
 
-                self.cell_types[int(np.argmin(np.array(center_distances)))] = 2
-            else:
-                current_density = 0
-                while current_density < self.density:
-                    candidates = np.where(self.cell_types == 0)[0]
-                    if len(candidates) == 0:
-                        break
+            self.cell_types[int(np.argmin(np.array(center_distances)))] = 2
+        else:
+            current_density = 0
+            while current_density < self.density:
+                candidates = np.where(self.cell_types == 0)[0]
+                if len(candidates) == 0:
+                    break
 
-                    chosen_cell = np.random.choice(candidates)
-                    self.cell_types[chosen_cell] = 2
-                    for cell_index in np.where(self.adjacency_matrix[chosen_cell] == 1)[0]:
-                        if not self.cell_types[cell_index]:
-                            self.cell_types[cell_index] = 3
+                chosen_cell = np.random.choice(candidates)
+                self.cell_types[chosen_cell] = 2
+                for cell_index in np.where(self.adjacency_matrix[chosen_cell] == 1)[0]:
+                    if not self.cell_types[cell_index]:
+                        self.cell_types[cell_index] = 3
 
-                    current_density = len(np.where(self.cell_types == 2)[0]) / self.num_cells
-
-                self.cell_types[np.where(self.cell_types == 3)[0]] = 0
-
-            self.evaluate_boundary()
+                current_density = len(np.where(self.cell_types == 2)[0]) / self.num_cells
+            
+            self.cell_types[np.where(self.cell_types == 3)[0]] = 0
 
         #target_area = 0
         #count = 0
@@ -172,6 +164,8 @@ class Tissue():
         for i in range(self.num_cells):
             if self.cell_types[i] != 1:
                 self.target_areas[i] = self.target_cell_area
+
+        self.evaluate_boundary()
 
         self.set_uniform_cilia_forces([0, 0], 0)
    
@@ -307,40 +301,45 @@ class Tissue():
 
     def evaluate_boundary(self):
         self.voronoi = Voronoi(self.cell_points)
-
-        self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells))
+        
+        # Determine connectivity from Voronoi map
+        voronoi_neighbours = [set() for _i in range(self.num_cells)]
         for ridge in self.voronoi.ridge_points:
             i, j = ridge
-            self.adjacency_matrix[i, j] = 1
-            self.adjacency_matrix[j, i] = 1
-
+            voronoi_neighbours[i].add(j)
+            voronoi_neighbours[j].add(i)
+        
         boundary_set = set(self.boundary_cycle)
-        for i in range(-1, len(self.boundary_cycle) - 1):
-            neighbours = np.nonzero(self.adjacency_matrix[self.boundary_cycle[i]])[0]
-            boundary_neighbours = boundary_set.intersection(neighbours)
-            goal_neighbours = [self.boundary_cycle[i-1], self.boundary_cycle[i+1]]
-            boundary_diff = boundary_neighbours.difference(goal_neighbours)
-            if boundary_diff:
-                boundary_neighbours = list(boundary_neighbours)
-                self.adjacency_matrix[self.boundary_cycle[i], boundary_neighbours] = 0
-                self.adjacency_matrix[boundary_neighbours, self.boundary_cycle[i]] = 0
-                self.adjacency_matrix[self.boundary_cycle[i], goal_neighbours] = 1
-                self.adjacency_matrix[goal_neighbours, self.boundary_cycle[i]] = 1
+        boundary_len = len(self.boundary_cycle)
+        boundary_delete_list = []
+        for i in range(-1, boundary_len - 1):
+            current = self.boundary_cycle[i]
+            before = self.boundary_cycle[i - 1]
+            after = self.boundary_cycle[i + 1]
 
-        self.comp_adjacency_matrix = csr_matrix(self.adjacency_matrix)
-        all_neighbours = [set(self.comp_adjacency_matrix.indices[self.comp_adjacency_matrix.indptr[i]:self.comp_adjacency_matrix.indptr[i+1]]) for i in range(self.comp_adjacency_matrix.shape[0])]
+            # Ensure that boundary connectivity follows the cycle
+            voronoi_neighbours[current] = voronoi_neighbours[current] - boundary_set
+            voronoi_neighbours[current].update([before, after])
 
-        if self.boundary_cycle.size == 0:
-            return 
-           
+            # Remove excessive boundary cells
+            if len(voronoi_neighbours[current]) <= 2:
+                current_before = self.cell_points[before] - self.cell_points[current]
+                current_after = self.cell_points[after] - self.cell_points[current]
+                pair_dot = np.dot(current_before, current_after)
+                angle = np.arccos(pair_dot / (np.linalg.norm(current_before) * np.linalg.norm(current_after)))
+
+                if angle < np.pi / 2:
+                    boundary_delete_list.append(current)
+
         # Add additional boundary cells
-        edges = np.stack((self.boundary_cycle, np.roll(self.boundary_cycle, shift=-1)),axis=1)
+        edges = np.stack((self.boundary_cycle, np.roll(self.boundary_cycle, shift=-1)), axis=1)
         new_boundary_cells = []
 
         for i in range(len(edges)):
             a, b = edges[i]
-            shared_cells = all_neighbours[a] & all_neighbours[b]
-            shared_non_boundary = shared_cells - set(self.boundary_cycle)
+            shared_cells = voronoi_neighbours[a] & voronoi_neighbours[b]
+            shared_non_boundary = shared_cells - boundary_set
+
             if len(shared_non_boundary) == 0:
                 continue
             c = int(next(iter(shared_non_boundary)))
@@ -365,22 +364,35 @@ class Tissue():
                 
                 self.cell_points = np.append(self.cell_points, [reflected_point], axis=0)
                 self.cell_types = np.append(self.cell_types, 1)
-                self.target_ares = np.append(self.target_areas, 0)
+                self.target_areas = np.append(self.target_areas, 0)
                 new_boundary_cells.append([i+1, len(self.cell_points) - 1])
-                
-                new_row = np.zeros(self.num_cells)
-                new_row[[a, b, c]] = 1
-                self.adjacency_matrix = np.vstack([self.adjacency_matrix, new_row])
+
                 self.num_cells += 1
-                new_column = np.zeros(self.num_cells)
-                new_column[[a, b, c]] = 1
-                self.adjacency_matrix = np.hstack([self.adjacency_matrix, new_column[:, np.newaxis]])
-
-        self.comp_adjacency_matrix = csr_matrix(self.adjacency_matrix)
-
+                voronoi_neighbours.append({a, b, c})
+        
         new_boundary_cells = reversed(new_boundary_cells)
         for new_boundary_cell in new_boundary_cells:
             self.boundary_cycle = np.insert(self.boundary_cycle, new_boundary_cell[0], new_boundary_cell[1])
+
+        # Construct an adjacency matrix
+        self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells), dtype=np.int32)
+        for i in range(self.num_cells):
+            self.adjacency_matrix[i][list(voronoi_neighbours[i])] = 1
+
+        # Handle the boundary cell deletions
+        boundary_delete_list = sorted(boundary_delete_list, reverse=True)
+        for deletion in boundary_delete_list:
+            self.cell_points = np.delete(self.cell_points, deletion, axis=0)
+            self.cell_types = np.delete(self.cell_types, deletion, axis=0)
+            self.target_areas = np.delete(self.target_areas, deletion, axis=0)
+            self.adjacency_matrix = np.delete(self.adjacency_matrix, deletion, axis=0)
+            self.adjacency_matrix = np.delete(self.adjacency_matrix, deletion, axis=1)
+            self.num_cells -= 1
+            self.boundary_cycle = np.delete(self.boundary_cycle, self.boundary_cycle==deletion)
+            greater = np.argwhere(self.boundary_cycle > deletion)
+            self.boundary_cycle[greater] -= 1
+ 
+        self.comp_adjacency_matrix = csr_matrix(self.adjacency_matrix)
 
     def increment_global_iteration(self, title: str, x_lim: int = 0, y_lim: int = 0, plot_frequency: int = 100):
         if self.global_iteration % plot_frequency == 0:

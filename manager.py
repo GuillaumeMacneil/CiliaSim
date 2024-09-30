@@ -104,11 +104,13 @@ class LoadedTissue():
 
     def plot_force_vectors_rel(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
         information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
+        self.tissue.evaluate_boundary()
         self.tissue.calculate_force_matrix()
         plot_force_vectors_rel(self.tissue.cell_points, self.tissue.cell_types, self.tissue.force_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information, auto=auto)
 
     def plot_force_vectors_abs(self, title: str, duration: float, x_lim: int = 0, y_lim: int = 0, auto: bool = True):
         information = f"Iteration: {self.current_it}\nEx. Flow Force: {self.tissue.flow_force}"
+        self.tissue.evaluate_boundary()
         self.tissue.calculate_force_matrix()
         plot_force_vectors_abs(self.tissue.cell_points, self.tissue.cell_types, self.tissue.force_matrix, title, duration, self.tissue.plot, x_lim=x_lim, y_lim=y_lim, information=information, auto=auto)
 

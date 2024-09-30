@@ -3,10 +3,10 @@ import numpy as np
 import cProfile
 
 def main():
-    tissue = Tissue(10, 10, 0.06)
+    tissue = Tissue(20, 20, 0.06)
     tissue.set_tracking()
     tissue.set_plotting()
-    #tissue.set_center_only(True)
+    tissue.set_center_only(True)
     tissue.random_layout()
     tissue.set_plot_spring()
     #tissue.simulate(f"Tissue annealing - No cilia force.", 1000, 100, plotting=False)
@@ -16,7 +16,7 @@ def main():
     #tissue.simulate(f"Tissue under cilia force.", 5000, 100, plotting=False)
     tissue.simulate(f"Tissue under cilia force.", 5000, 100)
 
-    tissue.write_to_file("./saved_simulations/test26.json")
+    tissue.write_to_file("./saved_simulations/test27.json")
 
 #cProfile.run('main()', sort="tottime")
 main()
