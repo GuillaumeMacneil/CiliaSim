@@ -37,7 +37,7 @@ class Tissue():
 
         self.target_spring_length = 1
         self.target_cell_area = np.sqrt(3) / 2
-        self.critical_length_delta = 0.2
+        self.critical_length_delta = 0.3
 
         self.net_energy = np.array([])
 
@@ -240,7 +240,7 @@ class Tissue():
     def set_plot_boundary_cycle(self):
         self.plot_type = 11
 
-    def calculate_force_matrix(self, tension_only: bool = False):
+    def calculate_force_matrix(self):
         spring_matrix = np.zeros((self.num_cells, self.num_cells))
         pressure_matrix = np.zeros((self.num_cells, self.num_cells))
         self.distance_matrix = np.zeros((self.num_cells, self.num_cells))
@@ -366,7 +366,6 @@ class Tissue():
                 self.cell_types = np.append(self.cell_types, 1)
                 self.target_areas = np.append(self.target_areas, 0)
                 new_boundary_cells.append([i+1, len(self.cell_points) - 1])
-
                 self.num_cells += 1
                 voronoi_neighbours.append({a, b, c})
         
@@ -388,9 +387,20 @@ class Tissue():
             self.adjacency_matrix = np.delete(self.adjacency_matrix, deletion, axis=0)
             self.adjacency_matrix = np.delete(self.adjacency_matrix, deletion, axis=1)
             self.num_cells -= 1
+
             self.boundary_cycle = np.delete(self.boundary_cycle, self.boundary_cycle==deletion)
             greater = np.argwhere(self.boundary_cycle > deletion)
             self.boundary_cycle[greater] -= 1
+
+            cilia_force_keys = list(self.cilia_forces.keys())
+            new_cilia_forces = dict()
+            for i in range(len(cilia_force_keys)):
+                if cilia_force_keys[i] > deletion:
+                    new_cilia_forces[cilia_force_keys[i] - 1] = self.cilia_forces[cilia_force_keys[i]]
+                else:
+                    new_cilia_forces[cilia_force_keys[i]] = self.cilia_forces[cilia_force_keys[i]]
+
+            self.cilia_forces = new_cilia_forces
  
         self.comp_adjacency_matrix = csr_matrix(self.adjacency_matrix)
 
@@ -426,9 +436,10 @@ class Tissue():
 
     def simulate(self, title: str, iterations: int = 5000, plot_frequency: int = 100, tension_only: bool = False, plotting: bool = True):
         plt.ion()
+        self.set_plot_boundary_cycle()
         for i in range(iterations):
             self.evaluate_boundary()
-            self.calculate_force_matrix(tension_only)
+            self.calculate_force_matrix()
             total_force = np.sum(self.force_matrix, axis=0)
             self.cell_points += total_force * 0.95 * 0.01
 
