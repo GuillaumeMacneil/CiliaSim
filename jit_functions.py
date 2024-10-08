@@ -2,8 +2,7 @@ import numpy as np
 from numba import njit, jit
 from numba.typed import List
 
-
-@njit
+@njit(cache=True)
 def polygon_area(vertices: np.ndarray):
     x = vertices[:, 0]
     y = vertices[:, 1]
@@ -13,7 +12,7 @@ def polygon_area(vertices: np.ndarray):
 
     return 0.5 * np.abs(sum_a - sum_b)
 
-@njit
+@njit(cache=True)
 def polygon_perimeter(vertices: np.ndarray):
     looped_vertices = np.append(vertices, [vertices[0]], axis=0)
     differences = np.diff(looped_vertices, axis=0)
@@ -21,7 +20,7 @@ def polygon_perimeter(vertices: np.ndarray):
 
     return np.sum(distances)
 
-@njit()
+@njit(cache=True)
 def calculate_force_matrix(
         num_cells: int,
         target_spring_length: float,
@@ -29,8 +28,8 @@ def calculate_force_matrix(
         cell_points: np.ndarray,
         cell_types: np.ndarray,
         target_areas: np.ndarray,
-        voronoi_vertices: List, 
-        all_neighbours: List 
+        voronoi_vertices: list, 
+        adjacency_matrix: np.ndarray
     ):
     spring_matrix = np.zeros((num_cells, num_cells), dtype=np.float64)
     pressure_matrix = np.zeros((num_cells, num_cells), dtype=np.float64)
@@ -39,7 +38,7 @@ def calculate_force_matrix(
 
     for i in range(num_cells):
         # Calculate spring forces
-        neighbours = all_neighbours[i]
+        neighbours = np.nonzero(adjacency_matrix[i])[0]
         neighbour_positions = cell_points[neighbours]
         differences = neighbour_positions - cell_points[i]
         #distances = np.linalg.norm(differences, axis=1)
@@ -65,7 +64,7 @@ def calculate_force_matrix(
 
     return force_matrix, distance_matrix
 
-@njit
+@njit(cache=True)
 def calculate_boundary_reflection(a: np.ndarray, b: np.ndarray, c: np.ndarray):
     ac = c - a
     bc = c - b
@@ -84,7 +83,8 @@ def calculate_boundary_reflection(a: np.ndarray, b: np.ndarray, c: np.ndarray):
 
     return False, None
 
-@njit
+# FIXME: Actually might be so simple that compilation makes it worse
+@njit(cache=True)
 def hexagonal_grid_layout(num_cells: int, x: int, y: int):
     num_rings = int(np.floor(1/2 + np.sqrt(12 * num_cells - 3) / 6))
 

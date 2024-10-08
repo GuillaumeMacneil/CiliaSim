@@ -29,11 +29,11 @@ class Tissue():
         self.cell_points = np.array([], dtype=np.float64)
         self.cell_types = np.array([], dtype=int)
         self.target_areas = np.array([], dtype=np.float64)
-        self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells), dtype=np.int32)
+        self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells), dtype=np.int64)
         self.comp_adjacency_matrix = None
         self.force_matrix = np.zeros((self.num_cells, self.num_cells, 2))
         self.distance_matrix = np.zeros((self.num_cells, self.num_cells))
-        self.boundary_cycle = np.array([], dtype=np.int32)
+        self.boundary_cycle = np.array([], dtype=np.int64)
         self.voronoi = None
 
         self.target_spring_length = 1
@@ -226,7 +226,6 @@ class Tissue():
     def calculate_force_matrix(self):
         # FIXME: Declaration of these large Numba lists is SO slow
         voronoi_vertices = List([np.array(self.voronoi.vertices[self.voronoi.regions[self.voronoi.point_region[i]]], dtype=np.float64) for i in range(self.num_cells)])
-        all_neighbours = List([np.array(self.comp_adjacency_matrix.indices[self.comp_adjacency_matrix.indptr[i]:self.comp_adjacency_matrix.indptr[i+1]], dtype=np.int32) for i in range(self.num_cells)])
 
         self.force_matrix, self.distance_matrix = calculate_force_matrix(
                 self.num_cells,
@@ -236,7 +235,7 @@ class Tissue():
                 self.cell_types,
                 self.target_areas,
                 voronoi_vertices,
-                all_neighbours
+                self.adjacency_matrix
                 )
 
         # Calculate cilia and external force contributions
@@ -321,7 +320,7 @@ class Tissue():
             self.boundary_cycle = np.insert(self.boundary_cycle, new_boundary_cell[0], new_boundary_cell[1])
 
         # Construct an adjacency matrix
-        self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells), dtype=np.int32)
+        self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells), dtype=np.int64)
         for i in range(self.num_cells):
             self.adjacency_matrix[i][list(voronoi_neighbours[i])] = 1
 
