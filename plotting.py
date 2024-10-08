@@ -1,4 +1,4 @@
-from functions import *
+from jit_functions import *
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolours

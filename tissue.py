@@ -1,4 +1,4 @@
-from functions import *
+from jit_functions import *
 from plotting import *
 
 import numpy as np
@@ -8,6 +8,7 @@ from scipy.sparse import csr_matrix
 import matplotlib.pyplot as plt
 import json
 from collections import defaultdict
+from numba.typed import List
 
 class Tissue():
     def __init__(self, x: int, y: int, cilia_density: float):
@@ -25,9 +26,9 @@ class Tissue():
         self.plot = TissuePlot()
         self.plot_type = 0
 
-        self.cell_points = np.array([])
-        self.cell_types = np.array([])
-        self.target_areas = np.array([])
+        self.cell_points = np.array([], dtype=np.float64)
+        self.cell_types = np.array([], dtype=int)
+        self.target_areas = np.array([], dtype=np.float64)
         self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells), dtype=np.int32)
         self.comp_adjacency_matrix = None
         self.force_matrix = np.zeros((self.num_cells, self.num_cells, 2))
@@ -37,7 +38,7 @@ class Tissue():
 
         self.target_spring_length = 1
         self.target_cell_area = np.sqrt(3) / 2
-        self.critical_length_delta = 0.3
+        self.critical_length_delta = 0.2
 
         self.net_energy = np.array([])
 
@@ -76,25 +77,7 @@ class Tissue():
         self.generate_cells()        
 
     def hexagonal_grid_layout(self):
-        num_rings = int(np.floor(1/2 + np.sqrt(12 * self.num_cells - 3) / 6))
-
-        points = []
-        cx = self.x / 2
-        cy = self.y / 2
-
-        # Add the center point
-        points.append((cx, cy))
-        
-        for i in range(1, num_rings + 1):
-            for j in range(6 * i):
-                angle = j * np.pi / (3 * i)
-                if i % 2 == 0:
-                    angle += np.pi / (3 * i)
-                x = cx + i * np.cos(angle)
-                y = cy + i * np.sin(angle)
-                points.append((x, y))
-
-        self.cell_points = np.array(points)
+        self.cell_points = np.array(hexagonal_grid_layout(self.num_cells, self.x, self.y))
         self.num_cells = len(self.cell_points)
         self.generate_cells()
 
@@ -241,45 +224,20 @@ class Tissue():
         self.plot_type = 11
 
     def calculate_force_matrix(self):
-        spring_matrix = np.zeros((self.num_cells, self.num_cells))
-        pressure_matrix = np.zeros((self.num_cells, self.num_cells))
-        self.distance_matrix = np.zeros((self.num_cells, self.num_cells))
-        unit_vector_matrix = np.zeros((self.num_cells, self.num_cells, 2))
+        # FIXME: Declaration of these large Numba lists is SO slow
+        voronoi_vertices = List([np.array(self.voronoi.vertices[self.voronoi.regions[self.voronoi.point_region[i]]], dtype=np.float64) for i in range(self.num_cells)])
+        all_neighbours = List([np.array(self.comp_adjacency_matrix.indices[self.comp_adjacency_matrix.indptr[i]:self.comp_adjacency_matrix.indptr[i+1]], dtype=np.int32) for i in range(self.num_cells)])
 
-        #net_energy = 0 
-        visited = []
-        for i in range(self.num_cells):
-            # Calculate spring forces
-            neighbours = self.comp_adjacency_matrix.indices[self.comp_adjacency_matrix.indptr[i]:self.comp_adjacency_matrix.indptr[i+1]]
-            neighbour_positions = self.cell_points[neighbours]
-            differences = neighbour_positions - self.cell_points[i]
-            distances = np.linalg.norm(differences, axis=1)
-            unit_vectors = differences / distances[:, np.newaxis]
-
-            self.distance_matrix[i, neighbours] = distances
-            unit_vector_matrix[i, neighbours] = unit_vectors
-
-            """ energy_distances = distances[~np.isin(neighbours, visited)[0]]
-            energy_contribution = 0.5 * (energy_distances - self.target_spring_length) ** 2
-            net_energy += np.sum(energy_contribution) """
-            visited.append(i)
-
-            force_magnitudes = self.target_spring_length - distances
-            if self.cell_types[i] == 1:
-                force_magnitudes /= 10
-                spring_matrix[i, neighbours] += force_magnitudes
-            else:
-                spring_matrix[i, neighbours] += force_magnitudes
-                area = polygon_area(self.voronoi.vertices[self.voronoi.regions[self.voronoi.point_region[i]]])
-                area_difference = (self.target_areas[i] - area)
-                """ net_energy += 0.5 * area_difference ** 2 """
-
-                pressure_matrix[i, neighbours] += area_difference / len(neighbours)
-                pressure_matrix[neighbours, i] += area_difference / len(neighbours)
-
-        spring_matrix = np.clip(spring_matrix, -self.critical_length_delta, None)
-
-        self.force_matrix = (spring_matrix + pressure_matrix).T[:, :, np.newaxis] * unit_vector_matrix
+        self.force_matrix, self.distance_matrix = calculate_force_matrix(
+                self.num_cells,
+                self.target_spring_length,
+                self.critical_length_delta,
+                self.cell_points,
+                self.cell_types,
+                self.target_areas,
+                voronoi_vertices,
+                all_neighbours
+                )
 
         # Calculate cilia and external force contributions
         for m_index in np.where(self.cell_types == 2)[0]:
@@ -300,7 +258,8 @@ class Tissue():
         return np.array(shape_factors)
 
     def evaluate_boundary(self):
-        self.voronoi = Voronoi(self.cell_points)
+        if self.voronoi == None:
+            self.voronoi = Voronoi(self.cell_points)
         
         # Determine connectivity from Voronoi map
         voronoi_neighbours = [set() for _i in range(self.num_cells)]
@@ -329,12 +288,11 @@ class Tissue():
                 angle = np.arccos(pair_dot / (np.linalg.norm(current_before) * np.linalg.norm(current_after)))
 
                 if angle < np.pi / 2:
-                    boundary_delete_list.append(current)
+                    boundary_delete_list.append(current) 
 
         # Add additional boundary cells
         edges = np.stack((self.boundary_cycle, np.roll(self.boundary_cycle, shift=-1)), axis=1)
         new_boundary_cells = []
-
         for i in range(len(edges)):
             a, b = edges[i]
             shared_cells = voronoi_neighbours[a] & voronoi_neighbours[b]
@@ -348,20 +306,9 @@ class Tissue():
             b_point = self.cell_points[b]
             c_point = self.cell_points[c]
 
-            ac = c_point - a_point
-            bc = c_point - b_point
-            ac_dot_bc = np.dot(ac, bc)
-            angle = np.arccos(ac_dot_bc / (np.linalg.norm(ac) * np.linalg.norm(bc)))
+            reflect_flag, reflected_point = calculate_boundary_reflection(a_point, b_point, c_point)
 
-            if angle > np.pi / 2:
-                edge_vector = b_point - a_point
-                edge_unit_vector = edge_vector / np.linalg.norm(edge_vector)
-
-                projection_length = np.dot(c_point - a_point, edge_unit_vector)
-                projection_vector = projection_length * edge_unit_vector
-
-                reflected_point = 2 * (a_point + projection_vector) - c_point
-                
+            if reflect_flag:
                 self.cell_points = np.append(self.cell_points, [reflected_point], axis=0)
                 self.cell_types = np.append(self.cell_types, 1)
                 self.target_areas = np.append(self.target_areas, 0)
@@ -402,6 +349,7 @@ class Tissue():
 
             self.cilia_forces = new_cilia_forces
  
+        self.voronoi = Voronoi(self.cell_points)
         self.comp_adjacency_matrix = csr_matrix(self.adjacency_matrix)
 
     def increment_global_iteration(self, title: str, x_lim: int = 0, y_lim: int = 0, plot_frequency: int = 100):
@@ -436,7 +384,7 @@ class Tissue():
 
     def simulate(self, title: str, iterations: int = 5000, plot_frequency: int = 100, tension_only: bool = False, plotting: bool = True):
         plt.ion()
-        self.set_plot_boundary_cycle()
+#        self.set_plot_boundary_cycle()
         for i in range(iterations):
             self.evaluate_boundary()
             self.calculate_force_matrix()
