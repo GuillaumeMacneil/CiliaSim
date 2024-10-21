@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "ciliasim"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+jax = "^0.4"
+numpy = "^2"
+matplotlib = "^3.9"
+scipy = "^1.14"
+numba = "^0.60.0"
+rich = "^13.9.2"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.10.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
