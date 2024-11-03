@@ -87,30 +87,23 @@ def calculate_boundary_reflection(a: np.ndarray, b: np.ndarray, c: np.ndarray):
     return False, np.empty_like(a)
 
 
-def hexagonal_grid_layout(num_cells: int, width: float, height: float) -> np.ndarray:
+@njit(cache=True)
+def hexagonal_grid_layout(num_cells: int, x: int, y: int):
     num_rings = int(np.floor(1/2 + np.sqrt(12 * num_cells - 3) / 6))
 
-    center = np.array([width/2, height/2])
+    points = []
+    cx = x / 2
+    cy = y / 2
 
-    total_points = 1 + sum(6*i for i in range(1, num_rings + 1))
-    points = np.zeros((total_points, 2))
-    points[0] = center
-
-    current_idx = 1
+    points.append((cx, cy))
     
     for i in range(1, num_rings + 1):
-        angles = np.linspace(0, 2*np.pi, 6*i, endpoint=False)
+        for j in range(6 * i):
+            angle = j * np.pi / (3 * i)
+            if i % 2 == 0:
+                angle += np.pi / (3 * i)
+            x = cx + i * np.cos(angle)
+            y = cy + i * np.sin(angle)
+            points.append((x, y))
 
-        if i % 2 == 0:
-            angles += np.pi / (3 * i)
-            
-        ring_points = np.column_stack([
-            i * np.cos(angles),
-            i * np.sin(angles)
-        ])
-        
-        points[current_idx:current_idx + 6*i] = ring_points + center
-        
-        current_idx += 6*i
-    
-    return points[:min(num_cells, total_points)]
+    return points
