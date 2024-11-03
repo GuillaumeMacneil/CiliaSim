@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import json
 from collections import defaultdict
 from numba.typed import List
+from tqdm import tqdm
 
 class Tissue():
     def __init__(self, x: int, y: int, cilia_density: float):
@@ -255,7 +256,7 @@ class Tissue():
             shape_factors.append(perimeter / np.sqrt(area))
             
         return np.array(shape_factors)
-
+    
     def evaluate_boundary(self):
         if self.voronoi == None:
             self.voronoi = Voronoi(self.cell_points)
@@ -383,8 +384,7 @@ class Tissue():
 
     def simulate(self, title: str, iterations: int = 5000, plot_frequency: int = 100, tension_only: bool = False, plotting: bool = True):
         plt.ion()
-#        self.set_plot_boundary_cycle()
-        for i in range(iterations):
+        for i in tqdm(range(iterations), desc=title):
             self.evaluate_boundary()
             self.calculate_force_matrix()
             total_force = np.sum(self.force_matrix, axis=0)
@@ -397,7 +397,7 @@ class Tissue():
                 self.increment_global_iteration(title, x_lim=self.x, y_lim=self.y, plot_frequency=plot_frequency)
             else:
                 self.global_iteration += 1
-            
+                
     def write_to_file(self, path: str):
         json_data = {"parameters": {"x": self.x, "y": self.y, "cilia_density": self.density}, "cell_types": self.cell_types.tolist(), "target_areas": self.target_areas.tolist(), "force_states": self.force_states, "cell_states": self.cell_states, "net_energy": self.net_energy.tolist()}
         json_object = json.dumps(json_data)

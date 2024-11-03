@@ -20,87 +20,97 @@ def polygon_perimeter(vertices: np.ndarray):
 
     return np.sum(distances)
 
+
 @njit(cache=True)
 def calculate_force_matrix(
-        num_cells: int,
-        target_spring_length: float,
-        critical_length_delta: float,
-        cell_points: np.ndarray,
-        cell_types: np.ndarray,
-        target_areas: np.ndarray,
-        voronoi_vertices: list, 
-        adjacency_matrix: np.ndarray
-    ):
+    num_cells: int,
+    target_spring_length: float,
+    critical_length_delta: float,
+    cell_points: np.ndarray,
+    cell_types: np.ndarray,
+    target_areas: np.ndarray,
+    voronoi_vertices: list, 
+    adjacency_matrix: np.ndarray
+):
     spring_matrix = np.zeros((num_cells, num_cells), dtype=np.float64)
     pressure_matrix = np.zeros((num_cells, num_cells), dtype=np.float64)
     distance_matrix = np.zeros((num_cells, num_cells), dtype=np.float64)
     unit_vector_matrix = np.zeros((num_cells, num_cells, 2), dtype=np.float64)
 
     for i in range(num_cells):
-        # Calculate spring forces
         neighbours = np.nonzero(adjacency_matrix[i])[0]
-        neighbour_positions = cell_points[neighbours]
-        differences = neighbour_positions - cell_points[i]
-        #distances = np.linalg.norm(differences, axis=1)
-        # FIXME: Numba doesn't like the axis argument for some reason
-        distances = np.array([np.linalg.norm(differences[j]) for j in range(len(differences))])
-        unit_vectors = differences / distances[:, np.newaxis]
+        if neighbours.size == 0:
+            continue
+
+        differences = cell_points[neighbours] - cell_points[i]
+        distances = np.sqrt((differences ** 2).sum(axis=1))
+        unit_vectors = differences / distances[:, None]
 
         distance_matrix[i, neighbours] = distances
         unit_vector_matrix[i, neighbours] = unit_vectors
 
-        spring_matrix[i, neighbours] += target_spring_length - distances
+        spring_matrix[i, neighbours] = target_spring_length - distances
+
         if cell_types[i] != 1:
             area = polygon_area(voronoi_vertices[i])
             split_area_difference = (target_areas[i] - area) / len(neighbours)
+            pressure_matrix[i, neighbours] = split_area_difference
+            pressure_matrix[neighbours, i] = split_area_difference
 
-            pressure_matrix[i, neighbours] += split_area_difference
-            pressure_matrix[neighbours, i] += split_area_difference 
-
-    spring_matrix[cell_types == 1] /= 10
-    spring_matrix = np.clip(spring_matrix, -critical_length_delta, None)
-
-    force_matrix = (spring_matrix + pressure_matrix).T[:, :, np.newaxis] * unit_vector_matrix
+    spring_matrix[cell_types == 1] *= 0.1
+    np.clip(spring_matrix, -critical_length_delta, None, out=spring_matrix)
+    force_matrix = (spring_matrix + pressure_matrix)[..., None] * unit_vector_matrix
 
     return force_matrix, distance_matrix
+
 
 @njit(cache=True)
 def calculate_boundary_reflection(a: np.ndarray, b: np.ndarray, c: np.ndarray):
     ac = c - a
     bc = c - b
+    ac_norm = np.linalg.norm(ac)
+    bc_norm = np.linalg.norm(bc)
     ac_dot_bc = np.dot(ac, bc)
-    angle = np.arccos(ac_dot_bc / (np.linalg.norm(ac) * np.linalg.norm(bc)))
 
-    if angle > np.pi / 2:
+    angle_cos = ac_dot_bc / (ac_norm * bc_norm)
+    if angle_cos < 0:  # Equivalent to angle > π/2, avoids costly arccos
         edge_vector = b - a
-        edge_unit_vector = edge_vector / np.linalg.norm(edge_vector)
+        edge_norm = np.linalg.norm(edge_vector)
+        edge_unit_vector = edge_vector / edge_norm
 
-        projection_length = np.dot(c - a, edge_unit_vector)
+        projection_length = np.dot(ac, edge_unit_vector)
         projection_vector = projection_length * edge_unit_vector
 
         reflected_point = 2 * (a + projection_vector) - c
         return True, reflected_point
 
-    return False, None
+    return False, np.empty_like(a)
 
-# FIXME: Actually might be so simple that compilation makes it worse
-@njit(cache=True)
-def hexagonal_grid_layout(num_cells: int, x: int, y: int):
+
+def hexagonal_grid_layout(num_cells: int, width: float, height: float) -> np.ndarray:
     num_rings = int(np.floor(1/2 + np.sqrt(12 * num_cells - 3) / 6))
 
-    points = []
-    cx = x / 2
-    cy = y / 2
+    center = np.array([width/2, height/2])
 
-    points.append((cx, cy))
+    total_points = 1 + sum(6*i for i in range(1, num_rings + 1))
+    points = np.zeros((total_points, 2))
+    points[0] = center
+
+    current_idx = 1
     
     for i in range(1, num_rings + 1):
-        for j in range(6 * i):
-            angle = j * np.pi / (3 * i)
-            if i % 2 == 0:
-                angle += np.pi / (3 * i)
-            x = cx + i * np.cos(angle)
-            y = cy + i * np.sin(angle)
-            points.append((x, y))
+        angles = np.linspace(0, 2*np.pi, 6*i, endpoint=False)
 
-    return points
+        if i % 2 == 0:
+            angles += np.pi / (3 * i)
+            
+        ring_points = np.column_stack([
+            i * np.cos(angles),
+            i * np.sin(angles)
+        ])
+        
+        points[current_idx:current_idx + 6*i] = ring_points + center
+        
+        current_idx += 6*i
+    
+    return points[:min(num_cells, total_points)]
