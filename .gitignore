@@ -4,7 +4,7 @@ venv/
 *.prof
 saved_simulations/
 
-*.egg-info/
+CiliaSim.egg-info/
 
 # IDE and editor files
 .vscode/

@@ -1,6 +1,11 @@
 import numpy as np
-from numba import njit, jit
-from numba.typed import List
+from numba import njit
+
+__all__ = [
+    "calculate_force_matrix",
+    "calculate_boundary_reflection",
+    "hexagonal_grid_layout",
+]
 
 
 @njit(cache=True)

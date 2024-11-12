@@ -8,10 +8,4 @@ def main():
     manager.energy_progression_plot(0, "Net Energy")
 
 
-#    manager.duplicate_tissue(0)
-#    manager.duplicate_tissue(0)
-#    manager.duplicate_tissue(0)
-#    manager.batch_load_iteration(2000)
-#    manager.batch_simulate()
-
 main()

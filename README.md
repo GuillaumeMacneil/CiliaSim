@@ -46,3 +46,8 @@ As stated above, this project is still under active development. It is likely th
 6. Link to the paper you based this off.
 
 
+# Thoughts
+
+- [ ] Preallocate an array of a certain size.
+- [ ] Only voronoi once the positions have shifted more than some tolerance (this is a nlgn operation otherwise)
+- [ ] generalise to nd.

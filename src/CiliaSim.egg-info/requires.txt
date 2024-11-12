@@ -1,7 +1,0 @@
-tqdm
-numpy
-scipy
-matplotlib
-numba
-pytest
-ruff

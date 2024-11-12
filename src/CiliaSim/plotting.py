@@ -1,4 +1,4 @@
-from CiliaSim.jit_functions import *
+from CiliaSim.jit_functions import polygon_area
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolours
@@ -806,7 +806,7 @@ def plot_Q_divergence(
     div_x = xx_dx + yx_dy
     div_y = xy_dx + yy_dy
 
-    divergence_magnitude = np.sqrt(div_x**2 + div_y**2)
+    # divergence_magnitude = np.sqrt(div_x**2 + div_y**2)
 
     basic_indices = np.where(cell_types == 0)[0]
     boundary_indices = np.where(cell_types == 1)[0]

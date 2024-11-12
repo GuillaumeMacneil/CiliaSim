@@ -1,5 +1,25 @@
-from CiliaSim.jit_functions import *
-from CiliaSim.plotting import *
+from CiliaSim.jit_functions import (
+    calculate_boundary_reflection,
+    calculate_force_matrix,
+    hexagonal_grid_layout,
+    polygon_area,
+    polygon_perimeter,
+)
+from CiliaSim.plotting import (
+    TissuePlot,
+    plot_anisotropy_histogram,
+    plot_area_delta,
+    plot_avg_major_axes,
+    plot_boundary_cycle,
+    plot_force_vectors_abs,
+    plot_force_vectors_rel,
+    plot_major_axes,
+    plot_neighbour_histogram,
+    plot_Q_divergence,
+    plot_shape_factor_histogram,
+    plot_springs,
+    plot_tissue,
+)
 
 import numpy as np
 from scipy.spatial import Voronoi, Delaunay, KDTree
@@ -10,6 +30,7 @@ import json
 from collections import defaultdict
 from numba.typed import List
 from tqdm import tqdm
+import os
 
 
 class Tissue:
@@ -187,9 +208,9 @@ class Tissue:
                     int(multiciliated_cells[i])
                 ] = (unit_directions[i] * magnitude).tolist()
                 if -1 not in self.force_states.keys():
-                    self.force_states[self.global_iteration][-1] = (
-                        self.flow_force.tolist()
-                    )
+                    self.force_states[self.global_iteration][
+                        -1
+                    ] = self.flow_force.tolist()
 
     def set_uniform_cilia_forces(self, direction: list, magnitude: float):
         force = np.array(direction) * magnitude
@@ -198,13 +219,13 @@ class Tissue:
             self.cilia_forces[multiciliated_cell] = force
 
             if self.tracking:
-                self.force_states[self.global_iteration][int(multiciliated_cell)] = (
-                    force.tolist()
-                )
+                self.force_states[self.global_iteration][
+                    int(multiciliated_cell)
+                ] = force.tolist()
                 if -1 not in self.force_states.keys():
-                    self.force_states[self.global_iteration][-1] = (
-                        self.flow_force.tolist()
-                    )
+                    self.force_states[self.global_iteration][
+                        -1
+                    ] = self.flow_force.tolist()
 
     def set_flow(self, flow_direction, flow_magnitude):
         self.flow_force = np.array(flow_direction) * flow_magnitude
@@ -213,9 +234,9 @@ class Tissue:
             self.force_states[self.global_iteration][-1] = self.flow_force.tolist()
             if len(self.force_states[self.global_iteration].keys()) == 1:
                 for key in self.cilia_forces.keys():
-                    self.force_states[self.global_iteration][int(key)] = (
-                        self.cilia_forces[int(key)].tolist()
-                    )
+                    self.force_states[self.global_iteration][
+                        int(key)
+                    ] = self.cilia_forces[int(key)].tolist()
 
     def set_plot_basic(self):
         self.plot_type = 0
@@ -301,7 +322,7 @@ class Tissue:
         return np.array(shape_factors)
 
     def evaluate_boundary(self):
-        if self.voronoi == None:
+        if self.voronoi is None:
             self.voronoi = Voronoi(self.cell_points)
 
         # Determine connectivity from Voronoi map
@@ -551,20 +572,44 @@ class Tissue:
     def simulate(
         self,
         title: str,
+        dt: float = 0.01,
+        damping: float = 0.95,
         iterations: int = 5000,
         plot_frequency: int = 100,
-        tension_only: bool = False,
         plotting: bool = True,
     ):
+        """
+        Simulate the tissue for a given number of iterations.
+
+        Parameters
+        ----------
+        title : str
+            The title of the simulation.
+        dt : float, optional
+            The time step of the simulation. The default is 0.01.
+        damping : float, optional
+            The damping factor of the simulation. The default is 0.95.
+        iterations : int, optional
+            The number of iterations to simulate. The default is 5000.
+        plot_frequency : int, optional
+            The frequency at which to plot the simulation. The default is 100.
+        plotting : bool, optional
+            Whether to plot the simulation. The default is True.
+
+        Returns
+        -------
+        None
+        """
         plt.ion()
         for i in tqdm(range(iterations), desc=title):
             self.evaluate_boundary()
             self.calculate_force_matrix()
+            # TODO consider using velocity verlet for a more stable simulation (larger timesteps)
             total_force = np.sum(self.force_matrix, axis=0)
-            self.cell_points += total_force * 0.95 * 0.01
+            self.cell_points += total_force * damping * dt
 
             if self.tracking:
-                self.cell_states[self.global_iteration] = self.cell_points.tolist()
+                self.cell_states[self.global_iteration] = self.cell_points
 
             if plotting:
                 self.increment_global_iteration(
@@ -574,14 +619,17 @@ class Tissue:
                 self.global_iteration += 1
 
     def write_to_file(self, path: str):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
         json_data = {
             "parameters": {"x": self.x, "y": self.y, "cilia_density": self.density},
             "cell_types": self.cell_types.tolist(),
             "target_areas": self.target_areas.tolist(),
             "force_states": self.force_states,
-            "cell_states": self.cell_states,
+            "cell_states": {k: v.tolist() for k, v in self.cell_states.items()},
             "net_energy": self.net_energy.tolist(),
         }
+
         json_object = json.dumps(json_data)
 
         with open(path, "w") as output_file:

@@ -1,6 +1,4 @@
 from CiliaSim.tissue import Tissue
-import numpy as np
-import cProfile
 from time import time
 
 
@@ -11,13 +9,22 @@ def main():
     # tissue.set_plotting()
     tissue.set_center_only(True)
     tissue.hexagonal_grid_layout()
-    # tissue.set_plot_major_axes()
-    # tissue.set_plot_spring()
-    tissue.simulate(f"Tissue annealing - No cilia force.", 1000, 100, plotting=False)
-    tissue.set_uniform_cilia_forces([0, 1], 0.4)
-    # tissue.set_random_cilia_forces(0.5)
     tissue.simulate(
-        f"Tissue under random cilia force of mag. {0.5}.", 5000, 100, plotting=False
+        title="Tissue annealing - No cilia force.",
+        dt=0.01,
+        damping=0.95,
+        iterations=1000,
+        plot_frequency=100,
+        plotting=False,
+    )
+    tissue.set_uniform_cilia_forces([0, 1], 0.4)
+    tissue.simulate(
+        title=f"Tissue under random cilia force of mag. {0.5}.",
+        dt=0.01,
+        damping=0.95,
+        iterations=5000,
+        plot_frequency=100,
+        plotting=False,
     )
 
     tissue.write_to_file("./saved_simulations/test30.json")
