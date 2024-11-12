@@ -2,23 +2,9 @@ from CiliaSim.jit_functions import (
     calculate_boundary_reflection,
     calculate_force_matrix,
     hexagonal_grid_layout,
-    polygon_area,
-    polygon_perimeter,
 )
 from CiliaSim.plotting import (
     TissuePlot,
-    plot_anisotropy_histogram,
-    plot_area_delta,
-    plot_avg_major_axes,
-    plot_boundary_cycle,
-    plot_force_vectors_abs,
-    plot_force_vectors_rel,
-    plot_major_axes,
-    plot_neighbour_histogram,
-    plot_Q_divergence,
-    plot_shape_factor_histogram,
-    plot_springs,
-    plot_tissue,
 )
 
 import numpy as np
@@ -30,10 +16,19 @@ from collections import defaultdict
 from numba.typed import List
 from tqdm import tqdm
 import os
+from scipy.sparse import csr_matrix
 
 
 class Tissue:
-    def __init__(self, x: int, y: int, cilia_density: float):
+    def __init__(
+        self,
+        x: int,
+        y: int,
+        cilia_density: float,
+        centre_only: bool = False,
+        plotting: bool = False,
+        tracking: bool = False,
+    ):
         if (x < 2) or (y < 2):
             raise ValueError("Tissue dimensions must be 2x2 or larger.")
 
@@ -41,10 +36,10 @@ class Tissue:
         self.y = y
         self.density = cilia_density
         self.num_cells = (x - 1) * (y - 1)
-
         self.global_iteration = 0
-        self.center_only = False
-        self.plotting = False
+        self.center_only = centre_only
+        self.plotting = plotting
+        self.tracking = tracking
         self.plot = TissuePlot()
         self.plot_type = 0
 
@@ -54,7 +49,6 @@ class Tissue:
         self.adjacency_matrix = np.zeros(
             (self.num_cells, self.num_cells), dtype=np.int64
         )
-        self.comp_adjacency_matrix = None
         self.force_matrix = np.zeros((self.num_cells, self.num_cells, 2))
         self.distance_matrix = np.zeros((self.num_cells, self.num_cells))
         self.boundary_cycle = np.array([], dtype=np.int64)
@@ -67,7 +61,6 @@ class Tissue:
         self.net_energy = np.array([])
 
         # State encoding variables
-        self.tracking = False
         self.force_states = defaultdict(dict)
         self.cell_states = {}
 
@@ -76,15 +69,6 @@ class Tissue:
 
         # Exogenous flow force
         self.flow_force = np.array([0, 0])
-
-    def set_center_only(self, value: bool):
-        self.center_only = value
-
-    def set_tracking(self):
-        self.tracking = True
-
-    def set_plotting(self):
-        self.plotting = True
 
     def random_layout(self):
         points = []
@@ -109,87 +93,98 @@ class Tissue:
 
     def generate_cells(self):
         delaunay = Delaunay(self.cell_points)
-        neighbour_vertices = delaunay.vertex_neighbor_vertices
+        indptr, indices = delaunay.vertex_neighbor_vertices
 
-        self.adjacency_matrix = np.zeros((self.num_cells, self.num_cells))
+        # Create sparse matrix using CSR format
+        rows = np.repeat(np.arange(self.num_cells), np.diff(indptr))
+        cols = indices
+        data = np.ones_like(indices)
+        self.adjacency_matrix = csr_matrix(
+            (data, (rows, cols)), shape=(self.num_cells, self.num_cells)
+        )
+
+        # 2. Initialize arrays
         self.cell_types = np.zeros(self.num_cells)
 
-        for i in range(self.num_cells):
-            neighbours = neighbour_vertices[1][
-                neighbour_vertices[0][i] : neighbour_vertices[0][i + 1]
+        # 3. Optimize boundary detection
+        bounds = np.array(
+            [
+                [
+                    self.cell_points[:, 0].min(),
+                    self.cell_points[:, 1].max(),
+                ],  # top-left
+                [
+                    self.cell_points[:, 0].max(),
+                    self.cell_points[:, 1].max(),
+                ],  # top-right
+                [
+                    self.cell_points[:, 0].max(),
+                    self.cell_points[:, 1].min(),
+                ],  # bottom-right
+                [
+                    self.cell_points[:, 0].min(),
+                    self.cell_points[:, 1].min(),
+                ],  # bottom-left
             ]
-            self.adjacency_matrix[i][neighbours] = 1
+        )
 
-            x_min, y_min = np.min(self.cell_points, axis=0)
-            x_max, y_max = np.max(self.cell_points, axis=0)
-
-            kd_tree = KDTree(self.cell_points)
-            num_edge_comparison_points = 50
-
-            top_edge = np.linspace(
-                [x_min, y_max], [x_max, y_max], num_edge_comparison_points
+        # Create edge points more efficiently
+        num_edge_points = 50
+        edges = []
+        for i in range(4):
+            start, end = bounds[i], bounds[(i + 1) % 4]
+            edge_points = np.column_stack(
+                [
+                    np.linspace(start[0], end[0], num_edge_points),
+                    np.linspace(start[1], end[1], num_edge_points),
+                ]
             )
-            right_edge = np.linspace(
-                [x_max, y_max], [x_max, y_min], num_edge_comparison_points
-            )
-            bottom_edge = np.linspace(
-                [x_max, y_min], [x_min, y_min], num_edge_comparison_points
-            )
-            left_edge = np.linspace(
-                [x_min, y_min], [x_min, y_max], num_edge_comparison_points
-            )
+            edges.append(edge_points)
 
-            for edge in [top_edge, right_edge, bottom_edge, left_edge]:
-                for comparison_point in edge:
-                    _, point_index = kd_tree.query(comparison_point)
-                    self.cell_types[point_index] = 1
-                    if not np.any(self.boundary_cycle == point_index):
-                        self.boundary_cycle = np.append(
-                            self.boundary_cycle, point_index
-                        )
+        # 4. Optimize boundary cell detection using KDTree
+        kd_tree = KDTree(self.cell_points)
+        edge_points = np.vstack(edges)
+        distances, indices = kd_tree.query(edge_points)
 
+        # Mark boundary cells
+        self.cell_types[indices] = 1
+        unique_boundary = np.unique(indices)
+        self.boundary_cycle = np.append(self.boundary_cycle, unique_boundary)
+
+        # 5. Optimize center/density-based cell assignment
         if self.center_only:
             area_center = np.array([self.x / 2, self.y / 2])
-            center_distances = []
-            for cell_point in self.cell_points:
-                center_distances.append(np.sum((area_center - cell_point) ** 2))
-
-            self.cell_types[int(np.argmin(np.array(center_distances)))] = 2
+            center_distances = np.sum((self.cell_points - area_center) ** 2, axis=1)
+            self.cell_types[np.argmin(center_distances)] = 2
         else:
-            current_density = 0
-            while current_density < self.density:
-                candidates = np.where(self.cell_types == 0)[0]
+            # Optimize density-based assignment
+            non_boundary_mask = self.cell_types == 0
+            target_count = int(self.density * self.num_cells)
+
+            while np.sum(self.cell_types == 2) < target_count:
+                candidates = np.where(non_boundary_mask)[0]
                 if len(candidates) == 0:
                     break
 
                 chosen_cell = np.random.choice(candidates)
                 self.cell_types[chosen_cell] = 2
-                for cell_index in np.where(self.adjacency_matrix[chosen_cell] == 1)[0]:
-                    if not self.cell_types[cell_index]:
-                        self.cell_types[cell_index] = 3
 
-                current_density = (
-                    len(np.where(self.cell_types == 2)[0]) / self.num_cells
-                )
+                # Get neighbors using sparse matrix
+                neighbors = self.adjacency_matrix[chosen_cell].toarray().flatten()
+                neighbor_mask = (neighbors > 0) & non_boundary_mask
+                self.cell_types[neighbor_mask] = 3
+                non_boundary_mask[neighbor_mask] = False
 
-            self.cell_types[np.where(self.cell_types == 3)[0]] = 0
+            # Reset temporary marked cells
+            self.cell_types[self.cell_types == 3] = 0
 
-        # target_area = 0
-        # count = 0
-        # for i in range(len(cell_points)):
-        #    if type_mask[i] != 1:
-        #        region_index = voronoi.point_region[i]
-        #        target_area += polygon_area(voronoi.vertices[voronoi.regions[region_index]])
-        #        count += 1
-        # target_area /= count
-
+        # 6. Optimize target areas assignment
         self.target_areas = np.zeros(self.num_cells)
-        for i in range(self.num_cells):
-            if self.cell_types[i] != 1:
-                self.target_areas[i] = self.target_cell_area
+        self.target_areas[self.cell_types != 1] = self.target_cell_area
 
+        # 7. Final steps
+        self.voronoi = Voronoi(self.cell_points)
         self.evaluate_boundary()
-
         self.set_uniform_cilia_forces([0, 0], 0)
 
     def add_cilia_force(self, cell_index: int, force: list):
@@ -237,97 +232,9 @@ class Tissue:
                         int(key)
                     ] = self.cilia_forces[int(key)].tolist()
 
-    def set_plot_basic(self):
-        self.plot_type = 0
-
-    def set_plot_spring(self):
-        self.plot_type = 1
-
-    def set_plot_force_vector_rel(self):
-        self.plot_type = 2
-
-    def set_plot_force_vector_abs(self):
-        self.plot_type = 3
-
-    def set_plot_major_axes(self):
-        self.plot_type = 4
-
-    def set_plot_avg_major_axes(self):
-        self.plot_type = 5
-
-    def set_plot_area_deltas(self):
-        self.plot_type = 6
-
-    def set_plot_neighbour_histogram(self):
-        self.plot_type = 7
-
-    def set_plot_shape_factor_histogram(self):
-        self.plot_type = 8
-
-    def set_plot_anisotropy_histogram(self):
-        self.plot_type = 9
-
-    def set_plot_Q_divergence(self):
-        self.plot_type = 10
-
-    def set_plot_boundary_cycle(self):
-        self.plot_type = 11
-
-    def calculate_force_matrix(self):
-        # FIXME: Declaration of these large Numba lists is SO slow
-
-        # TODO i think if you have an array where the size is max of vertices.size, you can just use that
-        voronoi_vertices = List(
-            [
-                self.voronoi.vertices[
-                    self.voronoi.regions[self.voronoi.point_region[i]]
-                ]
-                for i in range(self.num_cells)
-            ]
-        )
-
-        self.force_matrix, self.distance_matrix = calculate_force_matrix(
-            self.num_cells,
-            self.target_spring_length,
-            self.critical_length_delta,
-            self.cell_points,
-            self.cell_types,
-            self.target_areas,
-            voronoi_vertices,
-            self.adjacency_matrix,
-        )
-
-        # Calculate cilia and external force contributions
-        for m_index in np.where(self.cell_types == 2)[0]:
-            self.force_matrix[m_index, m_index] = (
-                self.cilia_forces[m_index] + self.flow_force
-            )
-
-        """ if not tension_only:
-            self.net_energy = np.append(self.net_energy, net_energy) """
-
-    def calculate_shape_factors(self):
-        non_boundary_cells = np.where(self.cell_types != 1)[0]
-        shape_factors = np.zeros(len(non_boundary_cells), dtype=np.float64)
-
-        point_regions = self.voronoi.point_region[non_boundary_cells]
-        regions = self.voronoi.regions
-        vertices = self.voronoi.vertices
-
-        for idx in range(len(non_boundary_cells)):
-            region_vertices = vertices[regions[point_regions[idx]]]
-            shape_factors[idx] = polygon_perimeter(region_vertices) / np.sqrt(
-                polygon_area(region_vertices)
-            )
-
-        return shape_factors
-
     def evaluate_boundary(self):
-        if self.voronoi is None:
-            self.voronoi = Voronoi(self.cell_points)
-
         # Determine connectivity from Voronoi map
-        voronoi_neighbours = [set() for _i in range(self.num_cells)]
+        voronoi_neighbours = [set() for _ in range(self.num_cells)]
         for ridge in self.voronoi.ridge_points:
             i, j = ridge
             voronoi_neighbours[i].add(j)
@@ -434,141 +341,35 @@ class Tissue:
             self.cilia_forces = new_cilia_forces
 
         self.voronoi = Voronoi(self.cell_points)
-        # self.comp_adjacency_matrix = csr_matrix(self.adjacency_matrix)
 
-    def increment_global_iteration(
-        self, title: str, x_lim: int = 0, y_lim: int = 0, plot_frequency: int = 100
-    ):
-        if self.global_iteration % plot_frequency == 0:
-            information = (
-                f"Iteration: {self.global_iteration}\nEx. Flow Force: {self.flow_force}"
+    def calculate_force_matrix(self):
+        # FIXME: Declaration of these large Numba lists is SO slow
+        # TODO i think if you have an array where the size is max of vertices.size, you can just use that
+        voronoi_vertices = List(
+            [
+                self.voronoi.vertices[
+                    self.voronoi.regions[self.voronoi.point_region[i]]
+                ]
+                for i in range(self.num_cells)
+            ]
+        )
+
+        self.force_matrix, self.distance_matrix = calculate_force_matrix(
+            self.num_cells,
+            self.target_spring_length,
+            self.critical_length_delta,
+            self.cell_points,
+            self.cell_types,
+            self.target_areas,
+            voronoi_vertices,
+            self.adjacency_matrix,
+        )
+
+        # Calculate cilia and external force contributions
+        for m_index in np.where(self.cell_types == 2)[0]:
+            self.force_matrix[m_index, m_index] = (
+                self.cilia_forces[m_index] + self.flow_force
             )
-            if self.plot_type == 0:
-                plot_tissue(
-                    self.cell_points,
-                    self.cell_types,
-                    title,
-                    0.5,
-                    self.plot,
-                    x_lim=x_lim,
-                    y_lim=y_lim,
-                    information=information,
-                )
-            elif self.plot_type == 1:
-                plot_springs(
-                    self.cell_points,
-                    self.cell_types,
-                    self.adjacency_matrix,
-                    title,
-                    0.5,
-                    self.plot,
-                    x_lim=x_lim,
-                    y_lim=y_lim,
-                    information=information,
-                )
-            elif self.plot_type == 2:
-                plot_force_vectors_rel(
-                    self.cell_points,
-                    self.cell_types,
-                    self.force_matrix,
-                    title,
-                    0.5,
-                    self.plot,
-                    x_lim=x_lim,
-                    y_lim=y_lim,
-                    information=information,
-                )
-            elif self.plot_type == 3:
-                plot_force_vectors_abs(
-                    self.cell_points,
-                    self.cell_types,
-                    self.force_matrix,
-                    title,
-                    0.5,
-                    self.plot,
-                    x_lim=x_lim,
-                    y_lim=y_lim,
-                    information=information,
-                )
-            elif self.plot_type == 4:
-                plot_major_axes(
-                    self.cell_points,
-                    self.cell_types,
-                    title,
-                    0.5,
-                    self.plot,
-                    x_lim=x_lim,
-                    y_lim=y_lim,
-                    information=information,
-                )
-            elif self.plot_type == 5:
-                plot_avg_major_axes(
-                    self.cell_points,
-                    self.cell_types,
-                    self.adjacency_matrix,
-                    title,
-                    0.5,
-                    self.plot,
-                    x_lim=x_lim,
-                    y_lim=y_lim,
-                    information=information,
-                )
-            elif self.plot_type == 6:
-                plot_area_delta(
-                    self.cell_points,
-                    self.cell_types,
-                    self.target_cell_area,
-                    title,
-                    0.5,
-                    self.plot,
-                    information=information,
-                )
-            elif self.plot_type == 7:
-                plot_neighbour_histogram(
-                    self.adjacency_matrix,
-                    title,
-                    0.5,
-                    self.plot,
-                    information=information,
-                )
-            elif self.plot_type == 8:
-                plot_shape_factor_histogram(
-                    self.calculate_shape_factors(),
-                    title,
-                    0.5,
-                    self.plot,
-                    information=information,
-                )
-            elif self.plot_type == 9:
-                plot_anisotropy_histogram(
-                    self.cell_points,
-                    self.cell_types,
-                    title,
-                    0.5,
-                    self.plot,
-                    information=information,
-                )
-            elif self.plot_type == 10:
-                plot_Q_divergence(
-                    self.cell_points,
-                    self.cell_types,
-                    title,
-                    0.5,
-                    self.plot,
-                    information=information,
-                )
-            elif self.plot_type == 11:
-                plot_boundary_cycle(
-                    self.cell_points,
-                    self.cell_types,
-                    self.boundary_cycle,
-                    title,
-                    0.5,
-                    self.plot,
-                    information=information,
-                )
-
-        self.global_iteration += 1
 
     def simulate(
         self,
@@ -602,22 +403,16 @@ class Tissue:
         None
         """
         plt.ion()
-        for i in tqdm(range(iterations), desc=title):
+        for _ in tqdm(range(iterations), desc=title):
+            # TODO this is easily the most expensive part of the simulation
             self.evaluate_boundary()
             self.calculate_force_matrix()
             # TODO consider using velocity verlet for a more stable simulation (larger timesteps)
             total_force = np.sum(self.force_matrix, axis=0)
             self.cell_points += total_force * damping * dt
+            self.cell_states[self.global_iteration] = self.cell_points
 
-            if self.tracking:
-                self.cell_states[self.global_iteration] = self.cell_points
-
-            if plotting:
-                self.increment_global_iteration(
-                    title, x_lim=self.x, y_lim=self.y, plot_frequency=plot_frequency
-                )
-            else:
-                self.global_iteration += 1
+        plt.ioff()
 
     def write_to_file(self, path: str):
         os.makedirs(os.path.dirname(path), exist_ok=True)

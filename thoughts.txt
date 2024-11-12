@@ -1,0 +1,15 @@
+
+
+sketch of idea in example.py
+
+tissue_centres -> array
+
+voronoi
+
+simulate
+ - eval boundary
+ - eval force matrix
+
+ need to remove as many superfluous functions 
+
+ 
