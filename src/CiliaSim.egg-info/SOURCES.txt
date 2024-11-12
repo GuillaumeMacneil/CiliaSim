@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+src/CiliaSim/__init__.py
+src/CiliaSim/jit_functions.py
+src/CiliaSim/manager.py
+src/CiliaSim/plotting.py
+src/CiliaSim/tissue.py
+src/CiliaSim.egg-info/PKG-INFO
+src/CiliaSim.egg-info/SOURCES.txt
+src/CiliaSim.egg-info/dependency_links.txt
+src/CiliaSim.egg-info/requires.txt
+src/CiliaSim.egg-info/top_level.txt

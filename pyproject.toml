@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "CiliaSim"
+description = "Something"
+version = "0.0.1"
+readme = "README.md"
+authors = [
+    {name = "Guillaume Macneil", email = "gc@gmail.com"},
+]
+dependencies = [
+    "tqdm",
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "numba",
+    "pytest",
+    "ruff"
+]
+
+[tool.ruff]
+select = ["E", "F", "W", "C"]
+ignore = ["E501"]
+extend-include = ["*.ipynb"]
+
+[tool.pytest.ini_options]
+filterwarnings = "ignore"

@@ -2,6 +2,7 @@ import numpy as np
 from numba import njit, jit
 from numba.typed import List
 
+
 @njit(cache=True)
 def polygon_area(vertices: np.ndarray):
     x = vertices[:, 0]
@@ -12,11 +13,12 @@ def polygon_area(vertices: np.ndarray):
 
     return 0.5 * np.abs(sum_a - sum_b)
 
+
 @njit(cache=True)
 def polygon_perimeter(vertices: np.ndarray):
     looped_vertices = np.append(vertices, [vertices[0]], axis=0)
     differences = np.diff(looped_vertices, axis=0)
-    distances = np.sqrt((differences ** 2).sum(axis=1))
+    distances = np.sqrt((differences**2).sum(axis=1))
 
     return np.sum(distances)
 
@@ -29,8 +31,8 @@ def calculate_force_matrix(
     cell_points: np.ndarray,
     cell_types: np.ndarray,
     target_areas: np.ndarray,
-    voronoi_vertices: list, 
-    adjacency_matrix: np.ndarray
+    voronoi_vertices: list,
+    adjacency_matrix: np.ndarray,
 ):
     spring_matrix = np.zeros((num_cells, num_cells), dtype=np.float64)
     pressure_matrix = np.zeros((num_cells, num_cells), dtype=np.float64)
@@ -43,7 +45,7 @@ def calculate_force_matrix(
             continue
 
         differences = cell_points[neighbours] - cell_points[i]
-        distances = np.sqrt((differences ** 2).sum(axis=1))
+        distances = np.sqrt((differences**2).sum(axis=1))
         unit_vectors = differences / distances[:, None]
 
         distance_matrix[i, neighbours] = distances
@@ -89,14 +91,14 @@ def calculate_boundary_reflection(a: np.ndarray, b: np.ndarray, c: np.ndarray):
 
 @njit(cache=True)
 def hexagonal_grid_layout(num_cells: int, x: int, y: int):
-    num_rings = int(np.floor(1/2 + np.sqrt(12 * num_cells - 3) / 6))
+    num_rings = int(np.floor(1 / 2 + np.sqrt(12 * num_cells - 3) / 6))
 
     points = []
     cx = x / 2
     cy = y / 2
 
     points.append((cx, cy))
-    
+
     for i in range(1, num_rings + 1):
         for j in range(6 * i):
             angle = j * np.pi / (3 * i)
