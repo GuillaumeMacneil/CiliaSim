@@ -3,3 +3,41 @@ venv/
 *.json
 *.prof
 saved_simulations/
+
+*.egg-info/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.iml
+
+# Build and cache directories
+build/
+__pycache__/
+tests/__pycache__/
+
+# OS-specific files
+.DS_Store
+
+# Media files
+*.mp4
+*.gif
+*.png
+*.jpg
+
+# Output directories
+plots/
+outputs/
+img_plots/
+data/
+bin/
+traces/
+
+# Python-related files
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+
+*.coverage
