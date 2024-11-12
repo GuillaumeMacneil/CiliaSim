@@ -8,24 +8,33 @@ __all__ = [
 ]
 
 
-@njit(cache=True)
-def polygon_area(vertices: np.ndarray):
+@njit(cache=True, fastmath=True)
+def polygon_area(vertices: np.ndarray) -> float:
+    """Optimized polygon area calculation using Shoelace formula"""
     x = vertices[:, 0]
     y = vertices[:, 1]
+    # Preallocate arrays and use direct indexing
+    n = len(x)
+    shifted_x = np.empty(n)
+    shifted_y = np.empty(n)
+    shifted_x[:-1] = x[1:]
+    shifted_x[-1] = x[0]
+    shifted_y[:-1] = y[1:]
+    shifted_y[-1] = y[0]
+    return 0.5 * np.abs(np.sum(x * shifted_y - y * shifted_x))
 
-    sum_a = np.dot(x, y[np.arange(len(y)) - 1])
-    sum_b = np.dot(y, x[np.arange(len(x)) - 1])
 
-    return 0.5 * np.abs(sum_a - sum_b)
-
-
-@njit(cache=True)
-def polygon_perimeter(vertices: np.ndarray):
-    looped_vertices = np.append(vertices, [vertices[0]], axis=0)
-    differences = np.diff(looped_vertices, axis=0)
-    distances = np.sqrt((differences**2).sum(axis=1))
-
-    return np.sum(distances)
+@njit(cache=True, fastmath=True)
+def polygon_perimeter(vertices: np.ndarray) -> float:
+    """Optimized polygon perimeter calculation"""
+    n = len(vertices)
+    total = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        dx = vertices[j, 0] - vertices[i, 0]
+        dy = vertices[j, 1] - vertices[i, 1]
+        total += np.sqrt(dx * dx + dy * dy)
+    return total
 
 
 @njit(cache=True)

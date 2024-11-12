@@ -24,7 +24,6 @@ from CiliaSim.plotting import (
 import numpy as np
 from scipy.spatial import Voronoi, Delaunay, KDTree
 from scipy.stats import qmc
-from scipy.sparse import csr_matrix
 import matplotlib.pyplot as plt
 import json
 from collections import defaultdict
@@ -276,14 +275,13 @@ class Tissue:
 
     def calculate_force_matrix(self):
         # FIXME: Declaration of these large Numba lists is SO slow
+
+        # TODO i think if you have an array where the size is max of vertices.size, you can just use that
         voronoi_vertices = List(
             [
-                np.array(
-                    self.voronoi.vertices[
-                        self.voronoi.regions[self.voronoi.point_region[i]]
-                    ],
-                    dtype=np.float64,
-                )
+                self.voronoi.vertices[
+                    self.voronoi.regions[self.voronoi.point_region[i]]
+                ]
                 for i in range(self.num_cells)
             ]
         )
@@ -310,16 +308,19 @@ class Tissue:
 
     def calculate_shape_factors(self):
         non_boundary_cells = np.where(self.cell_types != 1)[0]
-        shape_factors = []
-        for cell in non_boundary_cells:
-            vertices = self.voronoi.vertices[
-                self.voronoi.regions[self.voronoi.point_region[cell]]
-            ]
-            area = polygon_area(vertices)
-            perimeter = polygon_perimeter(vertices)
-            shape_factors.append(perimeter / np.sqrt(area))
+        shape_factors = np.zeros(len(non_boundary_cells), dtype=np.float64)
 
-        return np.array(shape_factors)
+        point_regions = self.voronoi.point_region[non_boundary_cells]
+        regions = self.voronoi.regions
+        vertices = self.voronoi.vertices
+
+        for idx in range(len(non_boundary_cells)):
+            region_vertices = vertices[regions[point_regions[idx]]]
+            shape_factors[idx] = polygon_perimeter(region_vertices) / np.sqrt(
+                polygon_area(region_vertices)
+            )
+
+        return shape_factors
 
     def evaluate_boundary(self):
         if self.voronoi is None:
@@ -433,7 +434,7 @@ class Tissue:
             self.cilia_forces = new_cilia_forces
 
         self.voronoi = Voronoi(self.cell_points)
-        self.comp_adjacency_matrix = csr_matrix(self.adjacency_matrix)
+        # self.comp_adjacency_matrix = csr_matrix(self.adjacency_matrix)
 
     def increment_global_iteration(
         self, title: str, x_lim: int = 0, y_lim: int = 0, plot_frequency: int = 100
