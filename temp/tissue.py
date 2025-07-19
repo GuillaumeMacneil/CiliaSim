@@ -170,6 +170,7 @@ class Tissue():
 
     def set_uniform_cilia_forces(self, direction: list, magnitude: float):
         force = np.array(direction) * magnitude
+        self.flow_force = force
         multiciliated_cells = np.where(self.cell_types == 2)[0]
         for multiciliated_cell in multiciliated_cells:
             self.cilia_forces[multiciliated_cell] = force
@@ -178,6 +179,7 @@ class Tissue():
                 self.force_states[self.global_iteration][int(multiciliated_cell)] = force.tolist()
                 if -1 not in self.force_states.keys():
                     self.force_states[self.global_iteration][-1] = self.flow_force.tolist()
+
 
     def set_flow(self, flow_direction, flow_magnitude):
         self.flow_force = np.array(flow_direction) * flow_magnitude
