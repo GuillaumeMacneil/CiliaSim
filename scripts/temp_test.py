@@ -11,7 +11,9 @@ tissue = tissue.Tissue(
             x = 10, 
             y = 10, 
             density = 0.06,
-            center_only=True
+            center_only=True,
+            save=True,
+            output_dir="simulations/"
         )
 
 tissue.specify_cells((1.0, 0.0))

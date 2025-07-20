@@ -1,9 +1,8 @@
 import numpy as np
 import json
-import matplotlib.pyplot as plt
-from scipy.spatial import Delaunay
-from scipy.stats import qmc
 from tqdm import tqdm
+from datetime import datetime
+from pathlib import Path
 
 from ciliasim import geometry 
 from ciliasim import boundary 
@@ -16,13 +15,13 @@ class Tissue():
             y: int, 
             density: float,
             spring_length: float = 1.0,
-            cell_area: float = (3 ** 0.5) / 2,
             critical_delta: float = 0.2,
             oversize_factor: float = 1.2,
             max_degree: int = 15,
             center_only: bool = False,
             random_layout: bool = False,
             save: bool = False,
+            save_freq: int = 10,
             output_dir: str = ""
             ):
         # Dimension and layout parameters
@@ -34,10 +33,9 @@ class Tissue():
        
         if (x < 2) or (y < 2):
             raise ValueError("Tissue dimensions must be 2x2 or larger.")
-        
+
         # Mechanical parameters
         self.spring_length = spring_length
-        self.cell_area = cell_area
         self.critical_delta = critical_delta
 
         # Composition parameters
@@ -47,9 +45,12 @@ class Tissue():
         # State saving parameters
         self.iteration = 0
         self.save = save
-        self.output_dir = output_dir
-        if save and not output_dir:
-            raise ValueError("If `save` is True, an `output_dir` must be provided.")
+        self.save_freq = save_freq
+        if not all([save, save_freq, output_dir]):
+            raise ValueError("If `save`, `save_freq` and `output_dir` must be provided for state saving.")
+        else:
+            self.output_path = Path(output_dir) / generate_filename(x, y, center_only, random_layout)
+            self.output_path.mkdir(parents=True, exist_ok=False)
        
         # Positional state arrays
         self.cell_points = np.full((self.max_cells, 2), -1, np.float32)
@@ -68,8 +69,8 @@ class Tissue():
         self.boundary_cycle_mask = np.zeros(self.max_cells, dtype=bool)
 
         # Force state arrays
-        self.forces = np.zeros((self.max_cells, self.max_degree, 2), dtype=np.float32)
-        self.force_states = np.zeros((self.max_cells, 2), dtype=np.float32)
+        self.internal_forces = np.zeros((self.max_cells, self.max_degree, 2), dtype=np.float32)
+        self.cilia_forces = np.zeros((self.max_cells, 2), dtype=np.float32)
         self.flow_force = np.zeros(2, dtype=np.float32)
 
     def specify_cells(self, area_distribution: tuple[float, float]):
@@ -109,17 +110,16 @@ class Tissue():
 
         self.evaluate_boundary()
         
-       
     def set_uniform_ciliary_forces(self, direction: np.ndarray, magnitude: float):
         force = direction * magnitude
         multiciliated_cells = np.where(self.cell_types == 2)[0]
-        self.force_states[multiciliated_cells] = force
+        self.cilia_forces[multiciliated_cells] = force
 
     def set_random_ciliary_forces(self, magnitude: float):
         multiciliated_cells = np.where(self.cell_types == 2)[0]
         non_unit_directions = np.random.uniform(-1, 1, [len(multiciliated_cells), 2])
         unit_directions = non_unit_directions / np.linalg.norm(non_unit_directions)
-        self.force_states[multiciliated_cells] = unit_directions * magnitude
+        self.cilia_forces[multiciliated_cells] = unit_directions * magnitude
 
     def set_flow_force(self, direction: np.ndarray, magnitude: float):
         self.flow_force = direction * magnitude
@@ -142,9 +142,9 @@ class Tissue():
             self.adjacency, self.triangles = connectivity.full_update(self.num_cells, self.max_cells, self.max_degree, self.max_triangles, self.cell_points)
 
     def simulate(self, iterations: int):
-        plt.ion()
         for i in tqdm(range(iterations)):
-            self.forces = calculate_forces(
+            # Calculate internal forces
+            self.internal_forces = calculate_forces(
                     self.num_cells,
                     self.max_cells,
                     self.max_degree,
@@ -157,13 +157,45 @@ class Tissue():
                     self.adjacency
                     )
             # NOTE: May be backwards - I really hope not
-            internal_force = np.sum(self.forces, axis=1)
+            internal_force = np.sum(self.internal_forces, axis=1)
+
+            # Introduce external forces and move cell centers accordingly
             multiciliated_mask = self.cell_types == 2
-            self.force_states[multiciliated_mask] += self.flow_force
-            total_force = internal_force + self.force_states
+            total_force = internal_force + self.cilia_forces
+            total_force[multiciliated_mask] += self.flow_force
             # FIXME: Should figure out what these magic numbers are
             self.cell_points += total_force * 0.95 * 0.01
-            
+
+            if self.save:
+                # Add static parameters header
+                if self.iteration == 0:
+                    with open(self.output_path / "params.json", "w") as params_file:
+                        static_params = {
+                                "x": self.x,
+                                "y": self.y,
+                                "density": self.density,
+                                "spring_length": self.spring_length,
+                                "critical_delta": self.critical_delta,
+                                "max_degree": self.max_degree,
+                                "max_cells": self.max_cells,
+                                "max_triangles": self.max_triangles
+                                }
+                        json.dump(static_params, params_file)
+
+                # Save state to file with given frequency
+                if self.iteration % self.save_freq == 0:
+                    np.savez_compressed(
+                            self.output_path / f"{self.iteration}.npz",
+                            cell_points = self.cell_points,
+                            cell_types = self.cell_types,
+                            target_areas = self.target_areas,
+                            adjacency = self.adjacency,
+                            triangles = self.triangles,
+                            boundary_cycle_mask = self.boundary_cycle_mask 
+                            )
+
+            self.iteration += 1
+
 
 def calculate_forces(
     num_cells: int,
@@ -211,3 +243,11 @@ def calculate_forces(
     forces = (spring_forces + pressure_forces)[..., None] * unit_vectors
 
     return forces
+
+
+def generate_filename(x: int, y: int, center_only: bool, random_layout: bool):
+    timestamp = datetime.now().strftime("%d-%m-%y_%H-%M-%S")
+    center_string = "_center" if center_only else ""
+    layout_string = "random" if random_layout else "hexagonal"
+
+    return f"{timestamp}_{x}x{y}{center_string}_{layout_string}"
