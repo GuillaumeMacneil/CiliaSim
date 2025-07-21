@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.spatial import Delaunay
-from itertools import combinations
 
 
 def full_update(num_cells: int, max_cells: int, max_degree: int, max_triangles: int, cell_points: np.ndarray):
@@ -19,17 +18,18 @@ def full_update(num_cells: int, max_cells: int, max_degree: int, max_triangles: 
         add_neighbour(indices, adjacency, k, i)
         triangles[triangle_pointer] = [i, j, k]     
         triangle_pointer += 1
-        
+
     return adjacency, triangles
 
 
 def add_neighbour(indices: np.ndarray, adjacency: np.ndarray, a: int, b: int):
-    pointer_a = indices[a]
-    pointer_b = indices[b]
-    adjacency[a][pointer_a] = b
-    adjacency[b][pointer_b] = a
-    indices[a] += 1
-    indices[b] += 1
+    if not np.any(adjacency[a, :indices[a]] == b):
+        adjacency[a, indices[a]] = b
+        indices[a] += 1
+
+    if not np.any(adjacency[b, :indices[b]] == a):
+        adjacency[b, indices[b]] = a
+        indices[b] += 1
 
 
 # FIXME: This should properly implement a partial update

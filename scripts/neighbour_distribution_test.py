@@ -2,6 +2,7 @@ from scipy.spatial import Voronoi
 from tqdm import tqdm
 from collections import defaultdict, Counter
 import multiprocessing as mp
+import numpy as np
 
 from ciliasim import geometry
 
@@ -10,8 +11,9 @@ width = height = 10
 
 def simulate(_):
     neighbours = defaultdict(set)
-    layout = geometry.uniform_random_layout(width, height, int(width * height))
-    voronoi = Voronoi(layout)
+    layout = geometry.uniform_random_layout(width, height, int(width * height), 120)
+    mask = np.all(layout != -1, axis=1)
+    voronoi = Voronoi(layout[mask])
 
     for p1, p2 in voronoi.ridge_points:
         neighbours[p1].add(p2)
@@ -21,6 +23,8 @@ def simulate(_):
     distribution = Counter(degrees)
 
     return distribution, len(layout)
+
+#simulate(0)
 
 total = Counter()
 num_points = 0

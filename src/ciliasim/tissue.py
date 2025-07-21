@@ -47,7 +47,7 @@ class Tissue():
         self.save = save
         self.save_freq = save_freq
         if not all([save, save_freq, output_dir]):
-            raise ValueError("If `save`, `save_freq` and `output_dir` must be provided for state saving.")
+            raise ValueError("`save`, `save_freq` and `output_dir` must be provided for state saving.")
         else:
             self.output_path = Path(output_dir) / generate_filename(x, y, center_only, random_layout)
             self.output_path.mkdir(parents=True, exist_ok=False)
@@ -165,6 +165,7 @@ class Tissue():
             total_force[multiciliated_mask] += self.flow_force
             # FIXME: Should figure out what these magic numbers are
             self.cell_points += total_force * 0.95 * 0.01
+            self.evaluate_boundary()
 
             if self.save:
                 # Add static parameters header
@@ -184,14 +185,16 @@ class Tissue():
 
                 # Save state to file with given frequency
                 if self.iteration % self.save_freq == 0:
+                    circumcenters = geometry.calculate_circumcenters(self.cell_points, self.triangles)
                     np.savez_compressed(
                             self.output_path / f"{self.iteration}.npz",
                             cell_points = self.cell_points,
+                            circumcenters = circumcenters,
                             cell_types = self.cell_types,
                             target_areas = self.target_areas,
                             adjacency = self.adjacency,
                             triangles = self.triangles,
-                            boundary_cycle_mask = self.boundary_cycle_mask 
+                            boundary_cycle_mask = self.boundary_cycle_mask
                             )
 
             self.iteration += 1
