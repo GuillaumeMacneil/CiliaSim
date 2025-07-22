@@ -13,10 +13,10 @@ tissue = tissue.Tissue(
             density = 0.06,
             center_only=True,
             save=True,
-            save_freq=1,
+            save_freq=10,
             output_dir="simulations/"
         )
 
 tissue.specify_cells((1.0, 0.0))
-tissue.set_uniform_ciliary_forces(np.array([0, 1]), 1)
-tissue.simulate(50)
+#tissue.set_uniform_ciliary_forces(np.array([0, 1]), 1)
+tissue.simulate(2000)

@@ -24,8 +24,7 @@ class Examine():
         animate = plotting.basic_animation
         match plot_type:
             case "spring":
-                # animate = ...
-                pass
+                animate = plotting.spring_animation
             case _:
                 pass
         

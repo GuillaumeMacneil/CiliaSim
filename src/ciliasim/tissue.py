@@ -78,7 +78,7 @@ class Tissue():
         self.adjacency, self.triangles = connectivity.full_update(self.num_cells, self.max_cells, self.max_degree, self.max_triangles, self.cell_points)
 
         # Determine the boundary cycle and specify the individual cell types
-        self.boundary_cycle_mask = boundary.create_boundary(self.cell_points, self.num_cells, 50)
+        self.boundary_cycle_mask = boundary.create_boundary(self.triangles, self.max_cells)
         self.cell_types[:self.num_cells] = self.boundary_cycle_mask
 
         if self.center_only:
@@ -124,11 +124,11 @@ class Tissue():
     def set_flow_force(self, direction: np.ndarray, magnitude: float):
         self.flow_force = direction * magnitude
 
-
     def evaluate_boundary(self):
         # Remove any unnecessary cells on the boundary and add additional cells if needed
         changed = False
         prev_num_cells = self.num_cells
+        boundary.constrain_to_cycle(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.max_degree)
         boundary.remove_excessive_boundary_cells(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.cell_types, self.target_areas, self.num_cells)
         changed = prev_num_cells != self.num_cells
         boundary.add_additional_boundary_cells(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.cell_types, self.target_areas, self.num_cells)
@@ -156,7 +156,7 @@ class Tissue():
                     self.triangles,
                     self.adjacency
                     )
-            # NOTE: May be backwards - I really hope not
+            # NOTE: I'm pretty sure this is backward
             internal_force = np.sum(self.internal_forces, axis=1)
 
             # Introduce external forces and move cell centers accordingly
@@ -187,7 +187,7 @@ class Tissue():
                 if self.iteration % self.save_freq == 0:
                     circumcenters = geometry.calculate_circumcenters(self.cell_points, self.triangles)
                     np.savez_compressed(
-                            self.output_path / f"{self.iteration}.npz",
+                            self.output_path / f"{self.iteration:06d}.npz",
                             cell_points = self.cell_points,
                             circumcenters = circumcenters,
                             cell_types = self.cell_types,
@@ -230,19 +230,16 @@ def calculate_forces(
         units = differences / dists[:, None]
 
         unit_vectors[i][mask] = units
-        spring_forces[i][mask] = spring_length - dists
+        spring_forces[i][mask] = dists - spring_length
 
         if cell_types[i] != 1:
             area = geometry.calculate_cell_area(i, cell_points[i], triangles, circumcenters)
             split_area_difference = (target_areas[i] - area) / num_neighbours
-            pressure_forces[i][mask] += split_area_difference
+            pressure_forces[i][mask] -= split_area_difference
             neighbour_mask = adjacency[neighbours] == i
-            pressure_forces[neighbours][neighbour_mask] += split_area_difference
+            pressure_forces[neighbours][neighbour_mask] -= split_area_difference
 
-    # FIXME: This is pretty suspicious
-    spring_forces[cell_types == 1] *= 0.1
-    full_mask = adjacency != -1
-    spring_forces[full_mask] = np.clip(spring_forces[full_mask], -critical_delta, None) 
+    spring_forces = np.clip(spring_forces, 0, critical_delta) 
     forces = (spring_forces + pressure_forces)[..., None] * unit_vectors
 
     return forces
