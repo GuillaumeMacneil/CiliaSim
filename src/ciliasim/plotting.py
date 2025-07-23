@@ -4,9 +4,12 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Polygon
 from matplotlib.collections import LineCollection
 
-def get_voronoi_polygons(cell_points, circumcenters, triangles, num_cells):
+def get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells):
     polygons = []
     for cell_index in range(num_cells):
+        if cell_types[cell_index] == 1:
+            polygons.append([])
+            continue
         mask = np.any(triangles == cell_index, axis=1)
         vertices = circumcenters[mask]
         relative = vertices - cell_points[cell_index]
@@ -25,11 +28,15 @@ def basic_animation(state_files, params):
     triangles = initial_data["triangles"]
     cell_types = initial_data["cell_types"]
     num_cells = np.sum(cell_types != -1)
-    polygons = get_voronoi_polygons(cell_points, circumcenters, triangles, num_cells)
+    polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
 
+    # Set up plot configuration
     fig, ax = plt.subplots()
     ax.set_aspect("equal")
-
+    ax.set_xlim(np.min(cell_points[:, 0]) - 1, np.max(cell_points[:, 0]) + 1)
+    ax.set_ylim(np.min(cell_points[:, 1]) - 1, np.max(cell_points[:, 1]) + 1)   
+    
+    # Draw cell polygon patches
     patches = []
     for i in range(num_cells):
         polygon = polygons[i]
@@ -39,17 +46,17 @@ def basic_animation(state_files, params):
         elif cell_types[i] == 1:
             continue
 
+        if len(polygon) == 0:
+            continue
+           
         patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor='black', linewidth=0.5)
         ax.add_patch(patch)
         patches.append(patch)
 
+    # Draw boundary points
     boundary_mask = cell_types == 1
     boundary_points = cell_points[boundary_mask]
     boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
-
-    # Set the axes such that aspect ratio doesn't change jarringly
-    ax.set_xlim(np.min(cell_points[:, 0]) - 1, np.max(cell_points[:, 0]) + 1)
-    ax.set_ylim(np.min(cell_points[:, 1]) - 1, np.max(cell_points[:, 1]) + 1)   
 
     def update(frame):
         # Load the data required for a basic voronoi plot
@@ -60,12 +67,15 @@ def basic_animation(state_files, params):
         cell_types = data["cell_types"]
         num_cells = np.sum(cell_types != -1)
 
-        polygons = get_voronoi_polygons(cell_points, circumcenters, triangles, num_cells)
-
+        # Update cell polygon patches
+        polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
         for patch, polygon in zip(patches, polygons):
-            patch.set_xy(polygon)
-            #patch.set_facecolor(color_map_func(cell_types[i]))
+            if len(polygon) == 0:
+                continue
 
+            patch.set_xy(polygon)
+
+        # Update boundary points
         boundary_mask = cell_types == 1
         boundary_points = cell_points[boundary_mask]
         boundary_scatter.set_offsets(boundary_points)
@@ -83,7 +93,7 @@ def spring_animation(state_files, params):
     triangles = initial_data["triangles"]
     cell_types = initial_data["cell_types"]
     num_cells = np.sum(cell_types != -1)
-    polygons = get_voronoi_polygons(cell_points, circumcenters, triangles, num_cells)
+    polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
 
     # Set up plot configuration
     fig, ax = plt.subplots()
@@ -99,6 +109,9 @@ def spring_animation(state_files, params):
         if cell_types[i] == 2:
             colour = "orange"
         elif cell_types[i] == 1:
+            continue
+
+        if len(polygon) == 0:
             continue
 
         patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor='black', linewidth=0.5)
@@ -136,8 +149,11 @@ def spring_animation(state_files, params):
         num_cells = np.sum(cell_types != -1)
 
         # Update cell polygon patches
-        polygons = get_voronoi_polygons(cell_points, circumcenters, triangles, num_cells)
+        polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
         for patch, polygon in zip(patches, polygons):
+            if len(polygon) == 0:
+                continue
+
             patch.set_xy(polygon)
 
         # Update boundary points
