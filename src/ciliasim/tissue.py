@@ -78,7 +78,8 @@ class Tissue():
         self.adjacency, self.triangles = connectivity.full_update(self.num_cells, self.max_cells, self.max_degree, self.max_triangles, self.cell_points)
 
         # Determine the boundary cycle and specify the individual cell types
-        self.boundary_cycle_mask = boundary.create_boundary(self.triangles, self.max_cells)
+        #self.boundary_cycle_mask = boundary.create_boundary(self.triangles, self.max_cells)
+        self.boundary_cycle_mask = boundary.old_create_boundary(self.cell_points, self.max_cells, 50)
         self.cell_types[:self.num_cells] = self.boundary_cycle_mask
 
         if self.center_only:
@@ -128,7 +129,7 @@ class Tissue():
         # Remove any unnecessary cells on the boundary and add additional cells if needed
         changed = False
         prev_num_cells = self.num_cells
-        boundary.constrain_to_cycle(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.max_degree)
+        boundary.constrain_to_cycle(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.max_cells, self.max_degree)
         boundary.remove_excessive_boundary_cells(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.cell_types, self.target_areas, self.num_cells)
         changed = prev_num_cells != self.num_cells
         boundary.add_additional_boundary_cells(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.cell_types, self.target_areas, self.num_cells)
@@ -156,7 +157,6 @@ class Tissue():
                     self.triangles,
                     self.adjacency
                     )
-            # NOTE: I'm pretty sure this is backward
             internal_force = np.sum(self.internal_forces, axis=1)
 
             # Introduce external forces and move cell centers accordingly
@@ -239,7 +239,7 @@ def calculate_forces(
             neighbour_mask = adjacency[neighbours] == i
             pressure_forces[neighbours][neighbour_mask] -= split_area_difference
 
-    spring_forces = np.clip(spring_forces, 0, critical_delta) 
+    #spring_forces = np.clip(spring_forces, 0, critical_delta) 
     forces = (spring_forces + pressure_forces)[..., None] * unit_vectors
 
     return forces

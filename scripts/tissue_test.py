@@ -1,8 +1,5 @@
 import matplotlib
-import numpy as np
 matplotlib.use("Qt5Agg")
-
-import matplotlib.pyplot as plt
 
 from ciliasim import geometry
 from ciliasim import tissue
@@ -12,6 +9,7 @@ tissue = tissue.Tissue(
             y = 10, 
             density = 0.06,
             center_only=True,
+            random_layout=True,
             save=True,
             save_freq=10,
             output_dir="simulations/"

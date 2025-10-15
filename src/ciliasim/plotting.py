@@ -37,21 +37,16 @@ def basic_animation(state_files, params):
     ax.set_ylim(np.min(cell_points[:, 1]) - 1, np.max(cell_points[:, 1]) + 1)   
     
     # Draw cell polygon patches
-    patches = []
+    patches = [None] * num_cells
     for i in range(num_cells):
         polygon = polygons[i]
-        colour = "lightgray"
-        if cell_types[i] == 2:
-            colour = "orange"
-        elif cell_types[i] == 1:
+        if cell_types[i] == 1 or len(polygon) == 0:
             continue
 
-        if len(polygon) == 0:
-            continue
-           
+        colour = "orange" if cell_types[i] == 2 else "lightgray"
         patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor='black', linewidth=0.5)
         ax.add_patch(patch)
-        patches.append(patch)
+        patches[i] = patch
 
     # Draw boundary points
     boundary_mask = cell_types == 1
@@ -70,9 +65,8 @@ def basic_animation(state_files, params):
         # Update cell polygon patches
         polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
         for patch, polygon in zip(patches, polygons):
-            if len(polygon) == 0:
+            if patch is None or len(polygon) == 0:
                 continue
-
             patch.set_xy(polygon)
 
         # Update boundary points
@@ -82,7 +76,7 @@ def basic_animation(state_files, params):
 
         return patches + [boundary_scatter]
        
-    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
+    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=False)
 
 
 def spring_animation(state_files, params):
@@ -102,21 +96,16 @@ def spring_animation(state_files, params):
     ax.set_ylim(np.min(cell_points[:, 1]) - 1, np.max(cell_points[:, 1]) + 1)   
     
     # Draw cell polygon patches
-    patches = []
+    patches = [None] * num_cells
     for i in range(num_cells):
         polygon = polygons[i]
-        colour = "lightgray"
-        if cell_types[i] == 2:
-            colour = "orange"
-        elif cell_types[i] == 1:
+        if cell_types[i] == 1 or len(polygon) == 0:
             continue
 
-        if len(polygon) == 0:
-            continue
-
+        colour = "orange" if cell_types[i] == 2 else "lightgray"
         patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor='black', linewidth=0.5)
         ax.add_patch(patch)
-        patches.append(patch)
+        patches[i] = patch
 
     # Draw boundary points
     boundary_mask = cell_types == 1
@@ -151,9 +140,8 @@ def spring_animation(state_files, params):
         # Update cell polygon patches
         polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
         for patch, polygon in zip(patches, polygons):
-            if len(polygon) == 0:
+            if patch is None or len(polygon) == 0:
                 continue
-
             patch.set_xy(polygon)
 
         # Update boundary points
@@ -176,7 +164,8 @@ def spring_animation(state_files, params):
         
         springs_line_collection.set_segments(springs)
 
-        return patches + [boundary_scatter, springs_line_collection]
+        artists = [patch for patch in patches if patch is not None]
+        return artists + [boundary_scatter, springs_line_collection]
        
     return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
