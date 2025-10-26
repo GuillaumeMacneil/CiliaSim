@@ -62,12 +62,24 @@ def basic_animation(state_files, params):
         cell_types = data["cell_types"]
         num_cells = np.sum(cell_types != -1)
 
-        # Update cell polygon patches
+        # Clear old patches
+        for p in patches:
+            if p is not None:
+                p.remove()
+        patches.clear()
+
+        # Rebuild new patches
         polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
-        for patch, polygon in zip(patches, polygons):
-            if patch is None or len(polygon) == 0:
+        for i in range(num_cells):
+            polygon = polygons[i]
+            if cell_types[i] == 1 or len(polygon) == 0:
+                patches.append(None)
                 continue
-            patch.set_xy(polygon)
+
+            colour = "orange" if cell_types[i] == 2 else "lightgray"
+            patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor='black', linewidth=0.5)
+            ax.add_patch(patch)
+            patches.append(patch)
 
         # Update boundary points
         boundary_mask = cell_types == 1
@@ -86,6 +98,7 @@ def spring_animation(state_files, params):
     circumcenters = initial_data["circumcenters"]
     triangles = initial_data["triangles"]
     cell_types = initial_data["cell_types"]
+    adjacency = initial_data["adjacency"]
     num_cells = np.sum(cell_types != -1)
     polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
 
@@ -119,11 +132,15 @@ def spring_animation(state_files, params):
             continue
 
         a, b, c = triangle
-        springs.extend([
-            [cell_points[a], cell_points[b]],
-            [cell_points[b], cell_points[c]],
-            [cell_points[c], cell_points[a]]
-            ])
+        spring_pairs = []
+        if b in adjacency[a]:
+            spring_pairs.append([cell_points[a], cell_points[b]])
+        if c in adjacency[b]:
+            spring_pairs.append([cell_points[b], cell_points[c]])
+        if a in adjacency[c]:
+            spring_pairs.append([cell_points[c], cell_points[a]])
+
+        springs.extend(spring_pairs)
     
     springs_line_collection = LineCollection(springs, colors="gray", linewidths=0.5)
     ax.add_collection(springs_line_collection)
@@ -135,14 +152,27 @@ def spring_animation(state_files, params):
         circumcenters = data["circumcenters"]
         triangles = data["triangles"]
         cell_types = data["cell_types"]
+        adjacency = data["adjacency"]
         num_cells = np.sum(cell_types != -1)
 
-        # Update cell polygon patches
+        # Clear old patches
+        for p in patches:
+            if p is not None:
+                p.remove()
+        patches.clear()
+
+        # Rebuild new patches
         polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
-        for patch, polygon in zip(patches, polygons):
-            if patch is None or len(polygon) == 0:
+        for i in range(num_cells):
+            polygon = polygons[i]
+            if cell_types[i] == 1 or len(polygon) == 0:
+                patches.append(None)
                 continue
-            patch.set_xy(polygon)
+
+            colour = "orange" if cell_types[i] == 2 else "lightgray"
+            patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor='black', linewidth=0.5)
+            ax.add_patch(patch)
+            patches.append(patch)
 
         # Update boundary points
         boundary_mask = cell_types == 1
@@ -156,12 +186,16 @@ def spring_animation(state_files, params):
                 continue
 
             a, b, c = triangle
-            springs.extend([
-                [cell_points[a], cell_points[b]],
-                [cell_points[b], cell_points[c]],
-                [cell_points[c], cell_points[a]]
-                ])
-        
+            spring_pairs = []
+            if b in adjacency[a]:
+                spring_pairs.append([cell_points[a], cell_points[b]])
+            if c in adjacency[b]:
+                spring_pairs.append([cell_points[b], cell_points[c]])
+            if a in adjacency[c]:
+                spring_pairs.append([cell_points[c], cell_points[a]])
+
+            springs.extend(spring_pairs)
+
         springs_line_collection.set_segments(springs)
 
         artists = [patch for patch in patches if patch is not None]

@@ -5,8 +5,8 @@ from ciliasim import geometry
 from ciliasim import tissue
 
 tissue = tissue.Tissue(
-            x = 10, 
-            y = 10, 
+            x = 20, 
+            y = 20, 
             density = 0.06,
             center_only=True,
             random_layout=True,

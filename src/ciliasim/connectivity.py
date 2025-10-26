@@ -3,6 +3,7 @@ from scipy.spatial import Delaunay
 
 
 def full_update(num_cells: int, max_cells: int, max_degree: int, max_triangles: int, cell_points: np.ndarray):
+    #print(cell_points)
     adjacency = np.full((max_cells, max_degree), -1, dtype=np.int32)
     triangles = np.full((max_triangles, 3), -1, dtype=np.int32)
     valid = np.all(cell_points != -1, axis=1)

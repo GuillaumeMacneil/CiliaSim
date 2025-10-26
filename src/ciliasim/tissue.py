@@ -16,7 +16,7 @@ class Tissue():
             density: float,
             spring_length: float = 1.0,
             critical_delta: float = 0.2,
-            oversize_factor: float = 1.2,
+            oversize_factor: float = 3.0,
             max_degree: int = 15,
             center_only: bool = False,
             random_layout: bool = False,
@@ -78,8 +78,8 @@ class Tissue():
         self.adjacency, self.triangles = connectivity.full_update(self.num_cells, self.max_cells, self.max_degree, self.max_triangles, self.cell_points)
 
         # Determine the boundary cycle and specify the individual cell types
-        #self.boundary_cycle_mask = boundary.create_boundary(self.triangles, self.max_cells)
-        self.boundary_cycle_mask = boundary.old_create_boundary(self.cell_points, self.max_cells, 50)
+        self.boundary_cycle_mask = boundary.create_boundary(self.triangles, self.max_cells)
+        #self.boundary_cycle_mask = boundary.old_create_boundary(self.cell_points, self.max_cells, 50)
         self.cell_types[:self.num_cells] = self.boundary_cycle_mask
 
         if self.center_only:
@@ -126,21 +126,33 @@ class Tissue():
         self.flow_force = direction * magnitude
 
     def evaluate_boundary(self):
-        # Remove any unnecessary cells on the boundary and add additional cells if needed
+        # Add additional cells to the boundary and delete unnecessary ones if needed
         changed = False
         prev_num_cells = self.num_cells
-        boundary.constrain_to_cycle(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.max_cells, self.max_degree)
-        boundary.remove_excessive_boundary_cells(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.cell_types, self.target_areas, self.num_cells)
+        self.num_cells = boundary.add_additional_boundary_cells(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.cell_types, self.target_areas)
         changed = prev_num_cells != self.num_cells
-        boundary.add_additional_boundary_cells(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.cell_types, self.target_areas, self.num_cells)
+        self.num_cells = boundary.remove_excessive_boundary_cells(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.cell_types, self.target_areas)
         changed = (prev_num_cells != self.num_cells) or changed
 
         # If cells have either been deleted, added or both, perform a new triangulation, otherwise perform a partial re-triangulation
         if changed:
+            # Shift array structures to move empty entries to the end
+            empty_mask = (self.cell_points == -1).all(axis=1)
+            new_order = np.concatenate([
+                np.nonzero(~empty_mask)[0],
+                np.nonzero(empty_mask)[0]
+            ])
+            self.cell_points = self.cell_points[new_order]
+            self.boundary_cycle_mask = self.boundary_cycle_mask[new_order]
+            self.cell_types = self.cell_types[new_order]
+            self.target_areas = self.target_areas[new_order]
+
             self.adjacency, self.triangles = connectivity.full_update(self.num_cells, self.max_cells, self.max_degree, self.max_triangles, self.cell_points)
         else:
             # FIXME: This should properly implement a partial update
             self.adjacency, self.triangles = connectivity.full_update(self.num_cells, self.max_cells, self.max_degree, self.max_triangles, self.cell_points)
+
+        boundary.constrain_to_cycle(self.adjacency, self.boundary_cycle_mask, self.cell_points, self.max_cells, self.max_degree)
 
     def simulate(self, iterations: int):
         for i in tqdm(range(iterations)):

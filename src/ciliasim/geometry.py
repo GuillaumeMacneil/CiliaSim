@@ -74,12 +74,10 @@ def calculate_circumcenters(cell_points: np.ndarray, triangles: np.ndarray):
     cx, cy = C[:, 0], C[:, 1]
 
     d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
-
-    d_safe = np.where(np.abs(d) < 1e-14, 1e-14, d)
+    d_safe = np.where(np.abs(d) < 1e-12, 1e-12, d)
 
     ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d_safe
     uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d_safe
-
     centers = np.stack([ux, uy], axis=1)
 
     full_centers = np.full((triangles.shape[0], 2), -1, dtype=np.float32)
