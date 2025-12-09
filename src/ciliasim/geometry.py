@@ -74,17 +74,41 @@ def calculate_circumcenters(cell_points: np.ndarray, triangles: np.ndarray):
     cx, cy = C[:, 0], C[:, 1]
 
     d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
-    d_safe = np.where(np.abs(d) < 1e-12, 1e-12, d)
 
-    ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d_safe
-    uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d_safe
-    centers = np.stack([ux, uy], axis=1)
+    edge1 = B - A
+    edge2 = C - B
+    edge3 = A - C
+    max_edge = np.maximum.reduce([
+        np.linalg.norm(edge1, axis=1),
+        np.linalg.norm(edge2, axis=1),
+        np.linalg.norm(edge3, axis=1)
+    ])
 
-    full_centers = np.full((triangles.shape[0], 2), -1, dtype=np.float32)
+    eps = 1e-8 * np.maximum(1.0, max_edge ** 2)
+    degenerate = np.abs(d) < eps
+
+    ux_num = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by))
+    uy_num = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax))
+
+    ux = np.empty_like(ux_num, dtype=np.float64)
+    uy = np.empty_like(uy_num, dtype=np.float64)
+
+    nondeg_idx = ~degenerate
+    if np.any(nondeg_idx):
+        ux[nondeg_idx] = ux_num[nondeg_idx] / d[nondeg_idx]
+        uy[nondeg_idx] = uy_num[nondeg_idx] / d[nondeg_idx]
+
+    if np.any(degenerate):
+        centers_deg = (A[degenerate] + B[degenerate] + C[degenerate]) / 3.0
+        ux[degenerate] = centers_deg[:, 0]
+        uy[degenerate] = centers_deg[:, 1]
+
+    centers = np.stack([ux, uy], axis=1).astype(np.float32)
+
+    full_centers = np.full((triangles.shape[0], 2), -1.0, dtype=np.float32)
     full_centers[mask] = centers
 
     return full_centers
-
 
 def calculate_cell_area(cell_index: int, cell_point: np.ndarray, triangles: np.ndarray, circumcenters: np.ndarray):
     mask = np.any(triangles == cell_index, axis=1)

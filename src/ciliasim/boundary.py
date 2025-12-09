@@ -51,6 +51,9 @@ def constrain_to_cycle(adjacency: np.ndarray, boundary_cycle_mask: np.ndarray, c
     sorted_indices = np.argsort(angles)
     sorted_boundary_indices = boundary_indices[sorted_indices]
 
+    boundary_mask = np.zeros(max_cells, dtype=bool)
+    boundary_mask[sorted_boundary_indices] = True
+
     boundary_len = np.sum(boundary_cycle_mask)
     for i in range(boundary_len):
         current = sorted_boundary_indices[i]
@@ -60,8 +63,6 @@ def constrain_to_cycle(adjacency: np.ndarray, boundary_cycle_mask: np.ndarray, c
         mask = adjacency[current] != -1
         neighbours = adjacency[current][mask]
 
-        boundary_mask = np.zeros(max_cells, dtype=bool)
-        boundary_mask[sorted_boundary_indices] = True
         non_boundary_mask = ~boundary_mask[neighbours]
         non_boundary_neighbours = neighbours[non_boundary_mask]
         num_non_boundary = non_boundary_neighbours.shape[0]
@@ -90,25 +91,29 @@ def remove_excessive_boundary_cells(adjacency: np.ndarray, boundary_cycle_mask: 
         after = sorted_boundary_indices[(i + 1) % boundary_len]
 
         neighbours = adjacency[current]
+        neighbours = neighbours[neighbours != -1]
         boundary_neighbours = np.intersect1d(neighbours, sorted_boundary_indices)
         remove_flag = False
         if len(boundary_neighbours) <= 2:
             bc = cell_points[before] - cell_points[current]
             ac = cell_points[after] - cell_points[current]
-            pair_dot = np.dot(bc, ac)
-            angle = np.arccos(pair_dot / (np.linalg.norm(bc) * np.linalg.norm(ac)))
+            bc_norm = np.linalg.norm(bc)
+            ac_norm = np.linalg.norm(ac)
+            if bc_norm > 0 and ac_norm > 0:
+                pair_dot = np.dot(bc, ac)
+                angle = np.arccos(np.clip(pair_dot / (bc_norm * ac_norm), -1.0, 1.0))
 
-            if angle < np.pi / 2:
-                remove_flag = True
+                if angle < (np.pi / 2):
+                    remove_flag = True
          
-    #    print(boundary_neighbours, neighbours[neighbours != -1])
         if len(boundary_neighbours) == len(neighbours[neighbours != -1]) and (len(boundary_neighbours) + len(neighbours[neighbours != -1]) > 0):
             remove_flag = True
                  
         if remove_flag:
             cell_points[current] = [-1, -1]
-            boundary_cycle_mask[current] = 0
+            boundary_cycle_mask[current] = False
             target_areas[current] = 0
+            cell_types[current] = -1
 
     return np.sum(~(cell_points == -1).all(axis=1))
 
@@ -142,10 +147,12 @@ def add_additional_boundary_cells(adjacency: np.ndarray, boundary_cycle_mask: np
         bc_norm = np.linalg.norm(bc)
         ac_dot_bc = np.dot(ac, bc)
 
-        angle_cos = ac_dot_bc / (ac_norm * bc_norm)
-        if angle_cos < 0:
+        angle_cos = np.clip(ac_dot_bc / (ac_norm * bc_norm), -1.0, 1.0)
+        if angle_cos < 0.0:
             edge_vector = b - a
             edge_norm = np.linalg.norm(edge_vector)
+            if edge_norm == 0:
+                continue
             edge_unit_vector = edge_vector / edge_norm
 
             projection_length = np.dot(ac, edge_unit_vector)
@@ -153,7 +160,8 @@ def add_additional_boundary_cells(adjacency: np.ndarray, boundary_cycle_mask: np
 
             reflected_point = 2 * (a + projection_vector) - c
             
-            vacancy = np.argwhere(cell_points == -1)[0][0]
+            vacancies = np.where(np.all(cell_points == -1, axis=1))[0]
+            vacancy = int(vacancies[0])
             cell_points[vacancy] = reflected_point
             cell_types[vacancy] = 1
             target_areas[vacancy] = 0

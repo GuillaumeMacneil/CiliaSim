@@ -176,8 +176,15 @@ class Tissue():
             total_force = internal_force + self.cilia_forces
             total_force[multiciliated_mask] += self.flow_force
             # FIXME: Should figure out what these magic numbers are
-            self.cell_points += total_force * 0.95 * 0.01
+            self.cell_points[:self.num_cells] += total_force[:self.num_cells] * 0.95 * 0.01
             self.evaluate_boundary()
+
+            bad = np.where(np.all(self.cell_points[:self.num_cells] == -1, axis=1))[0]
+            if bad:
+                print("padded in active rows:", bad)
+            bad_refs = np.unique(self.adjacency[:self.num_cells][self.adjacency[:self.num_cells] >= self.num_cells])
+            if bad_refs:
+                print("references to out-of-range indices:", bad_refs)
 
             if self.save:
                 # Add static parameters header

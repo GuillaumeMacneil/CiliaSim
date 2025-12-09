@@ -25,6 +25,8 @@ class Examine():
         match plot_type:
             case "spring":
                 animate = plotting.spring_animation
+            case "major-axes":
+                animate = plotting.major_axes_animation
             case _:
                 pass
         
