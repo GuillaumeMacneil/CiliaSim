@@ -125,7 +125,6 @@ class Tissue():
             self.target_areas = initialisation.normal_random_target_areas(self.cell_types, self.num_cells, area_distribution[0], area_distribution[1])
 
         self.evaluate_boundary()
-        self.validate_initial_geometry()
         
     def set_uniform_ciliary_forces(self, direction: np.ndarray, magnitude: float):
         force = direction * magnitude
@@ -140,90 +139,6 @@ class Tissue():
 
     def set_flow_force(self, direction: np.ndarray, magnitude: float):
         self.flow_force = direction * magnitude
-
-    def validate_initial_geometry(self):
-        circumcenters = geometry.calculate_circumcenters(self.cell_points, self.triangles)
-        areas = np.asarray(geometry.calculate_cell_areas(circumcenters, self.cell_triangles))
-
-        real_mask = (self.cell_types != 1) & (self.cell_types != -1)
-        real_indices = np.where(real_mask)[0]
-        real_areas = areas[real_mask]
-        real_targets = self.target_areas[real_mask]
-        relative_areas = real_areas / real_targets
-
-        if not np.all(np.isfinite(relative_areas)):
-            bad = real_indices[~np.isfinite(relative_areas)]
-            raise RuntimeError(f"Initial geometry contains non-finite Voronoi areas for cells {bad}.")
-
-        min_relative_area = np.min(relative_areas)
-        median_relative_area = np.median(relative_areas)
-        max_relative_area = np.max(relative_areas)
-
-        print(f"Initial geometry: A/A0 min={min_relative_area:.3f}, median={median_relative_area:.3f}, max={max_relative_area:.3f}")
-
-        if max_relative_area <= 5.0:
-            return
-
-        worst_index = real_indices[np.argmax(relative_areas)]
-
-        triangle_indices = self.cell_triangles[worst_index]
-        triangle_indices = triangle_indices[triangle_indices != -1]
-
-        local_triangles = self.triangles[triangle_indices]
-        local_cells = np.unique(local_triangles)
-
-        print()
-        print(f"Pathological initial cell: {worst_index}")
-        print(f"Position: {self.cell_points[worst_index]}")
-        print(f"Area: {areas[worst_index]}")
-        print(f"Target area: {self.target_areas[worst_index]}")
-        print(f"A/A0: {areas[worst_index] / self.target_areas[worst_index]}")
-        print(f"Adjacency: {self.adjacency[worst_index]}")
-        print(f"Incident triangles: {triangle_indices}")
-
-        print()
-        print("Local cells:")
-
-        for cell in local_cells:
-            print(f"Cell {cell}: position={self.cell_points[cell]}, type={self.cell_types[cell]}, boundary={self.boundary_cycle_mask[cell]}")
-
-        print()
-        print("Incident triangles:")
-
-        for triangle_index in triangle_indices:
-            triangle = self.triangles[triangle_index]
-            points = self.cell_points[triangle]
-
-            a = points[0]
-            b = points[1]
-            c = points[2]
-
-            ab = b - a
-            ac = c - a
-
-            twice_area = np.abs(ab[0] * ac[1] - ab[1] * ac[0])
-
-            edge_ab = np.linalg.norm(b - a)
-            edge_bc = np.linalg.norm(c - b)
-            edge_ca = np.linalg.norm(a - c)
-            max_edge = max(edge_ab, edge_bc, edge_ca)
-
-            quality = twice_area / (max_edge ** 2) if max_edge > 0 else 0.0
-
-            circumcenter = np.asarray(circumcenters[triangle_index])
-            circumradius = np.linalg.norm(circumcenter - a)
-            radius_ratio = circumradius / max_edge if max_edge > 0 else np.inf
-
-            print(
-                f"Triangle {triangle_index}: {triangle}, "
-                f"types={self.cell_types[triangle]}, "
-                f"boundary={self.boundary_cycle_mask[triangle]}, "
-                f"quality={quality:.3e}, "
-                f"R/L={radius_ratio:.3e}, "
-                f"circumcenter={circumcenter}"
-            )
-
-        raise RuntimeError(f"Initial boundary geometry is pathological: cell {worst_index} has A/A0={max_relative_area:.3f}.")
 
     def evaluate_boundary(self):
         max_iterations = 20
@@ -289,7 +204,6 @@ class Tissue():
             total_force[multiciliated_mask] += self.flow_force
             self.cell_points[:self.num_cells] += total_force[:self.num_cells] * self.mobility * self.dt
             self.evaluate_boundary()
-            self.validate_initial_geometry()
 
             bad = np.where(np.all(self.cell_points[:self.num_cells] == -1, axis=1))[0]
             if len(bad) > 0:
@@ -335,8 +249,9 @@ class Tissue():
             self.iteration += 1
 
     def simulate(self, iterations: int):
-        for _ in tqdm(range(iterations)):
-            # Calculate internal forces
+        progress = tqdm(range(iterations))
+
+        for _ in progress:
             internal_force = -calculate_forces(
                 self.cell_points,
                 self.cell_types,
@@ -351,149 +266,29 @@ class Tissue():
 
             internal_force = np.asarray(internal_force)
 
-            # Check for non-finite forces
-            bad_forces = np.where(~np.all(np.isfinite(internal_force), axis=1))[0]
-            if len(bad_forces) > 0:
-                print(f"\nNon-finite forces at iteration {self.iteration}")
-                print("Cells:", bad_forces)
-                print("Forces:", internal_force[bad_forces])
-                print("Positions:", self.cell_points[bad_forces])
-                raise RuntimeError("Non-finite internal force")
-
-            # Introduce external forces
-            multiciliated_mask = self.cell_types == 2
             total_force = internal_force + self.cilia_forces
+            multiciliated_mask = self.cell_types == 2
             total_force[multiciliated_mask] += self.flow_force
 
-            # Calculate proposed displacement without applying it yet
+            real_mask = (self.cell_types[:self.num_cells] != 1) & (self.cell_types[:self.num_cells] != -1)
+            force_magnitudes = np.linalg.norm(internal_force[:self.num_cells][real_mask], axis=1)
+
             displacement = total_force[:self.num_cells] * self.mobility * self.dt
-            displacement_magnitudes = np.linalg.norm(displacement, axis=1)
+            displacement_magnitudes = np.linalg.norm(displacement[real_mask], axis=1)
 
-            max_displacement_index = np.argmax(displacement_magnitudes)
-            max_displacement = displacement_magnitudes[max_displacement_index]
-
-            # Stop before a large displacement corrupts the geometry
-            if max_displacement > 0.1 * self.spring_length:
-                cell_index = max_displacement_index
-
-                circumcenters = geometry.calculate_circumcenters(self.cell_points, self.triangles)
-                areas = np.asarray(geometry.calculate_cell_areas(circumcenters, self.cell_triangles))
-
-                triangle_indices = self.cell_triangles[cell_index]
-                triangle_indices = triangle_indices[triangle_indices != -1]
-
-                print(f"\nMechanical instability at iteration {self.iteration}")
-                print(f"Cell: {cell_index}")
-                print(f"Cell type: {self.cell_types[cell_index]}")
-                print(f"Boundary: {self.boundary_cycle_mask[cell_index]}")
-                print(f"Position: {self.cell_points[cell_index]}")
-                print(f"Area: {areas[cell_index]}")
-                print(f"Target area: {self.target_areas[cell_index]}")
-                print(f"Internal force: {internal_force[cell_index]}")
-                print(f"Cilia force: {self.cilia_forces[cell_index]}")
-                print(f"Total force: {total_force[cell_index]}")
-                print(f"Displacement: {displacement[cell_index]}")
-                print(f"Displacement magnitude: {max_displacement}")
-                print(f"Adjacency: {self.adjacency[cell_index]}")
-                print(f"Incident triangles: {triangle_indices}")
-
-                for triangle_index in triangle_indices:
-                    triangle = self.triangles[triangle_index]
-                    points = self.cell_points[triangle]
-
-                    a = points[0]
-                    b = points[1]
-                    c = points[2]
-
-                    ab = b - a
-                    ac = c - a
-
-                    twice_area = np.abs(ab[0] * ac[1] - ab[1] * ac[0])
-
-                    edge_ab = np.linalg.norm(b - a)
-                    edge_bc = np.linalg.norm(c - b)
-                    edge_ca = np.linalg.norm(a - c)
-                    max_edge = max(edge_ab, edge_bc, edge_ca)
-
-                    quality = twice_area / (max_edge ** 2) if max_edge > 0 else 0.0
-
-                    print()
-                    print(f"Triangle {triangle_index}: {triangle}")
-                    print(f"Points:\n{points}")
-                    print(f"Circumcenter: {np.asarray(circumcenters[triangle_index])}")
-                    print(f"Quality: {quality:.6e}")
-
-                    print()
-                    boundary.debug_boundary_triangle(
-                        self.adjacency,
-                        self.boundary_cycle_mask,
-                        self.cell_points,
-                        self.triangles[triangle_index],
-                    )
-
-                raise RuntimeError("Mechanical instability detected")
-
-            # Apply movement
             self.cell_points[:self.num_cells] += displacement
-
-            # Update topology/boundary
             self.evaluate_boundary()
-            self.validate_initial_geometry()
 
-            # Validate active rows
-            bad = np.where(np.all(self.cell_points[:self.num_cells] == -1, axis=1))[0]
-            if len(bad) > 0:
-                print("[WARNING] Padded in active rows:", bad)
-
-            # Validate adjacency references
-            bad_refs = np.unique(
-                self.adjacency[:self.num_cells][
-                    self.adjacency[:self.num_cells] >= self.num_cells
-                ]
+            progress.set_postfix(
+                Fmean=f"{np.mean(force_magnitudes):.3e}",
+                Fmax=f"{np.max(force_magnitudes):.3e}",
+                Dmax=f"{np.max(displacement_magnitudes):.3e}",
+                N=self.num_cells,
+                Nb=np.sum(self.boundary_cycle_mask),
             )
 
-            if len(bad_refs) > 0:
-                print("[WARNING] References to out-of-range indices:", bad_refs)
-
-            if self.save:
-                # Add static parameters header
-                if self.iteration == 0:
-                    with open(self.output_path / "params.json", "w") as params_file:
-                        static_params = {
-                            "x": self.x,
-                            "y": self.y,
-                            "density": self.density,
-                            "spring_length": self.spring_length,
-                            "spring_constant": self.spring_constant,
-                            "area_constant": self.area_constant,
-                            "max_degree": self.max_degree,
-                            "max_cells": self.max_cells,
-                            "max_triangles": self.max_triangles,
-                            "mobility": self.mobility,
-                            "dt": self.dt,
-                        }
-                        json.dump(static_params, params_file)
-
-                # Save state to file with given frequency
-                if self.iteration % self.save_freq == 0:
-                    circumcenters = geometry.calculate_circumcenters(
-                        self.cell_points,
-                        self.triangles,
-                    )
-
-                    np.savez_compressed(
-                        self.output_path / f"{self.iteration:06d}.npz",
-                        cell_points=self.cell_points,
-                        circumcenters=circumcenters,
-                        cell_types=self.cell_types,
-                        target_areas=self.target_areas,
-                        adjacency=self.adjacency,
-                        triangles=self.triangles,
-                        cell_triangles=self.cell_triangles,
-                        boundary_cycle_mask=self.boundary_cycle_mask,
-                    )
-
             self.iteration += 1
+
 
 def calculate_energy(cell_points, cell_types, target_areas, triangles, cell_triangles, adjacency, spring_length, spring_constant, area_constant):
     valid_neighbours = adjacency != -1

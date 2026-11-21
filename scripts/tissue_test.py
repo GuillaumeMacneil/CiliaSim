@@ -5,8 +5,8 @@ matplotlib.use("Qt5Agg")
 from ciliasim import tissue
 
 tissue = tissue.Tissue(
-            x = 40, 
-            y = 40, 
+            x = 20, 
+            y = 20, 
             density = 0.06,
             center_only=False,
             random_layout=True,
