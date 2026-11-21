@@ -1,7 +1,5 @@
-import numpy as np
 import matplotlib.pyplot as plt
 import json
-from tqdm import tqdm
 from pathlib import Path
 from datetime import datetime
 
@@ -27,6 +25,8 @@ class Examine():
                 animate = plotting.spring_animation
             case "major-axes":
                 animate = plotting.major_axes_animation
+            case "boundary":
+                animate = plotting.boundary_animation
             case _:
                 pass
         

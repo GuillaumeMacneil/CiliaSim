@@ -4,6 +4,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Polygon
 from matplotlib.collections import LineCollection
 
+
 def get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells):
     polygons = []
     for cell_index in range(num_cells):
@@ -19,6 +20,7 @@ def get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_
         polygons.append(polygon) 
 
     return polygons
+
 
 def basic_animation(state_files, params):
     # Load the initial points and set up the plot
@@ -203,11 +205,8 @@ def spring_animation(state_files, params):
        
     return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
+
 def compute_major_axis(polygon):
-    """
-    polygon: sequence of (x,y) coords (Nx2)
-    returns: (x1,y1,x2,y2) endpoints lying on the polygon boundary (or None)
-    """
     pts = np.asarray(polygon, dtype=np.float64)
     if pts.size == 0 or pts.shape[0] < 2:
         return None
@@ -220,7 +219,7 @@ def compute_major_axis(polygon):
     # PCA: largest eigenvector
     cov = (diffs.T @ diffs) / float(max(1, len(pts)))
     try:
-        eigvals, eigvecs = np.linalg.eigh(cov)
+        _, eigvecs = np.linalg.eigh(cov)
     except Exception:
         return None
     v = eigvecs[:, -1]
@@ -284,6 +283,7 @@ def compute_major_axis(polygon):
     p1 = center + v * tmin
     p2 = center + v * tmax
     return (p1[0], p1[1], p2[0], p2[1])
+
 
 def major_axes_animation(state_files, params):
     # Load the initial points and set up the plot
@@ -392,5 +392,96 @@ def major_axes_animation(state_files, params):
             boundary_scatter.set_offsets(np.empty((0, 2)))
 
         return patches + axis_lines + [boundary_scatter]
+
+    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=False)
+
+def boundary_animation(state_files, params):
+    # Load the initial points and set up the plot
+    initial_data = np.load(state_files[0])
+    cell_points = initial_data["cell_points"]
+    circumcenters = initial_data["circumcenters"]
+    triangles = initial_data["triangles"]
+    cell_types = initial_data["cell_types"]
+    num_cells = np.sum(cell_types != -1)
+    polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
+
+    # Set up plot configuration
+    fig, ax = plt.subplots()
+    ax.set_aspect("equal")
+    ax.set_xlim(np.min(cell_points[:, 0]) - 1, np.max(cell_points[:, 0]) + 1)
+    ax.set_ylim(np.min(cell_points[:, 1]) - 1, np.max(cell_points[:, 1]) + 1)
+
+    # Draw cell polygon patches
+    patches = [None] * num_cells
+    for i in range(num_cells):
+        polygon = polygons[i]
+        if cell_types[i] == 1 or len(polygon) == 0:
+            continue
+
+        colour = "orange" if cell_types[i] == 2 else "lightgray"
+        patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor="black", linewidth=0.5)
+        ax.add_patch(patch)
+        patches[i] = patch
+
+    # Draw boundary points
+    boundary_mask = cell_types == 1
+    boundary_points = cell_points[boundary_mask]
+    boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
+
+    # Draw boundary cycle
+    center = np.mean(boundary_points, axis=0)
+    relative_points = boundary_points - center
+    angles = np.arctan2(relative_points[:, 1], relative_points[:, 0])
+    order = np.argsort(angles)
+    ordered_boundary_points = boundary_points[order]
+    closed_boundary = np.vstack([ordered_boundary_points, ordered_boundary_points[0]])
+    boundary_line, = ax.plot(closed_boundary[:, 0], closed_boundary[:, 1], color="red", linewidth=1.5)
+
+    def update(frame):
+        # Load the data required for a basic Voronoi plot
+        data = np.load(state_files[frame])
+        cell_points = data["cell_points"]
+        circumcenters = data["circumcenters"]
+        triangles = data["triangles"]
+        cell_types = data["cell_types"]
+        num_cells = np.sum(cell_types != -1)
+
+        # Clear old patches
+        for p in patches:
+            if p is not None:
+                p.remove()
+        patches.clear()
+
+        # Rebuild new patches
+        polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
+        for i in range(num_cells):
+            polygon = polygons[i]
+            if cell_types[i] == 1 or len(polygon) == 0:
+                patches.append(None)
+                continue
+
+            colour = "orange" if cell_types[i] == 2 else "lightgray"
+            patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor="black", linewidth=0.5)
+            ax.add_patch(patch)
+            patches.append(patch)
+
+        # Update boundary points
+        boundary_mask = cell_types == 1
+        boundary_points = cell_points[boundary_mask]
+        boundary_scatter.set_offsets(boundary_points)
+
+        # Update boundary cycle
+        if len(boundary_points) >= 2:
+            center = np.mean(boundary_points, axis=0)
+            relative_points = boundary_points - center
+            angles = np.arctan2(relative_points[:, 1], relative_points[:, 0])
+            order = np.argsort(angles)
+            ordered_boundary_points = boundary_points[order]
+            closed_boundary = np.vstack([ordered_boundary_points, ordered_boundary_points[0]])
+            boundary_line.set_data(closed_boundary[:, 0], closed_boundary[:, 1])
+        else:
+            boundary_line.set_data([], [])
+
+        return patches + [boundary_scatter, boundary_line]
 
     return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=False)

@@ -4,5 +4,5 @@ matplotlib.use("Qt5Agg")
 
 from ciliasim import examine
 
-tissue = examine.Examine("./simulations/27-11-25_16-41-47_30x30_center_hexagonal/", "./animations/")
+tissue = examine.Examine("./simulations/21-11-26_20-08-34_40x40_random/", "./animations/")
 tissue.animate(plot_type="major-axes", save=True)

@@ -4,4 +4,5 @@ venv/
 *.prof
 simulations/
 animations/
+scripts/
 
