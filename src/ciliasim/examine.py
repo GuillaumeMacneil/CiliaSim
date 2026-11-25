@@ -27,6 +27,12 @@ class Examine():
                 animate = plotting.major_axes_animation
             case "boundary":
                 animate = plotting.boundary_animation
+            case "force-vectors":
+                animate = plotting.force_vectors_animation
+            case "force-field":
+                animate = plotting.force_field_animation
+            case "area-strain":
+                animate = plotting.area_strain_animation
             case _:
                 pass
         

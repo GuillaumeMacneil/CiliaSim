@@ -1,222 +1,247 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.patches import Polygon
-from matplotlib.collections import LineCollection
+from matplotlib.collections import LineCollection, PolyCollection
+from scipy.interpolate import griddata
 
 
-def get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells):
+def load_state(state_file):
+    with np.load(state_file) as data:
+        return {key: data[key] for key in data.files}
+
+
+def get_real_mask(cell_types):
+    return (cell_types != 1) & (cell_types != -1)
+
+
+def get_active_mask(cell_types):
+    return cell_types != -1
+
+
+def get_plot_limits(state_files, padding=1.0):
+    x_min = np.inf
+    x_max = -np.inf
+    y_min = np.inf
+    y_max = -np.inf
+
+    for state_file in state_files:
+        with np.load(state_file) as data:
+            cell_points = data["cell_points"]
+            cell_types = data["cell_types"]
+            active_points = cell_points[get_active_mask(cell_types)]
+
+            x_min = min(x_min, np.min(active_points[:, 0]))
+            x_max = max(x_max, np.max(active_points[:, 0]))
+            y_min = min(y_min, np.min(active_points[:, 1]))
+            y_max = max(y_max, np.max(active_points[:, 1]))
+
+    return x_min - padding, x_max + padding, y_min - padding, y_max + padding
+
+
+def get_real_polygons(cell_types, circumcenters, cell_triangles):
+    real_indices = np.where(get_real_mask(cell_types))[0]
+
     polygons = []
-    for cell_index in range(num_cells):
-        if cell_types[cell_index] == 1:
-            polygons.append([])
-            continue
-        mask = np.any(triangles == cell_index, axis=1)
-        vertices = circumcenters[mask]
-        relative = vertices - cell_points[cell_index]
-        angles = np.arctan2(relative[:, 1], relative[:, 0])
-        sorted_indices = np.argsort(angles)
-        polygon = vertices[sorted_indices]
-        polygons.append(polygon) 
+    colours = []
 
-    return polygons
+    for cell in real_indices:
+        triangle_indices = cell_triangles[cell]
+        triangle_indices = triangle_indices[triangle_indices >= 0]
+
+        if len(triangle_indices) < 3:
+            continue
+
+        polygons.append(circumcenters[triangle_indices])
+        colours.append("orange" if cell_types[cell] == 2 else "lightgray")
+
+    return polygons, colours
+
+
+def get_spring_edges(adjacency):
+    rows, slots = np.where(adjacency >= 0)
+    cols = adjacency[rows, slots]
+    keep = rows < cols
+
+    return np.column_stack((rows[keep], cols[keep]))
+
+
+def get_spring_segments(cell_points, adjacency):
+    edges = get_spring_edges(adjacency)
+
+    if len(edges) == 0:
+        return np.empty((0, 2, 2)), edges
+
+    segments = np.stack((cell_points[edges[:, 0]], cell_points[edges[:, 1]]), axis=1)
+
+    return segments, edges
+
+
+def get_major_axis_segments(polygons):
+    segments = []
+
+    for polygon in polygons:
+        coords = compute_major_axis(polygon)
+
+        if coords is None:
+            continue
+
+        x1, y1, x2, y2 = coords
+        segments.append(((x1, y1), (x2, y2)))
+
+    return np.asarray(segments)
+
+
+def get_spring_forces(cell_points, edges, spring_length, spring_constant):
+    if len(edges) == 0:
+        return np.empty(0)
+
+    differences = cell_points[edges[:, 1]] - cell_points[edges[:, 0]]
+    distances = np.linalg.norm(differences, axis=1)
+
+    return spring_constant * (distances - spring_length)
+
+
+def get_area_strains(cell_types, target_areas, circumcenters, cell_triangles):
+    polygons = []
+    strains = []
+
+    for cell in np.where(get_real_mask(cell_types))[0]:
+        triangle_indices = cell_triangles[cell]
+        triangle_indices = triangle_indices[triangle_indices >= 0]
+
+        if len(triangle_indices) < 3 or target_areas[cell] <= 0:
+            continue
+
+        polygon = circumcenters[triangle_indices]
+        x = polygon[:, 0]
+        y = polygon[:, 1]
+
+        area = 0.5 * np.abs(np.sum(x * np.roll(y, -1) - y * np.roll(x, -1)))
+
+        polygons.append(polygon)
+        strains.append((area - target_areas[cell]) / target_areas[cell])
+
+    return polygons, np.asarray(strains)
 
 
 def basic_animation(state_files, params):
-    # Load the initial points and set up the plot
-    initial_data = np.load(state_files[0])
+    initial_data = load_state(state_files[0])
+
     cell_points = initial_data["cell_points"]
     circumcenters = initial_data["circumcenters"]
-    triangles = initial_data["triangles"]
+    cell_triangles = initial_data["triangles"]
     cell_types = initial_data["cell_types"]
-    num_cells = np.sum(cell_types != -1)
-    polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
 
-    # Set up plot configuration
+    polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
+
+    x_min, x_max, y_min, y_max = get_plot_limits(state_files)
+
     fig, ax = plt.subplots()
     ax.set_aspect("equal")
-    ax.set_xlim(np.min(cell_points[:, 0]) - 1, np.max(cell_points[:, 0]) + 1)
-    ax.set_ylim(np.min(cell_points[:, 1]) - 1, np.max(cell_points[:, 1]) + 1)   
-    
-    # Draw cell polygon patches
-    patches = [None] * num_cells
-    for i in range(num_cells):
-        polygon = polygons[i]
-        if cell_types[i] == 1 or len(polygon) == 0:
-            continue
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
 
-        colour = "orange" if cell_types[i] == 2 else "lightgray"
-        patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor='black', linewidth=0.5)
-        ax.add_patch(patch)
-        patches[i] = patch
+    polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.5)
+    ax.add_collection(polygon_collection)
 
-    # Draw boundary points
-    boundary_mask = cell_types == 1
-    boundary_points = cell_points[boundary_mask]
+    boundary_points = cell_points[cell_types == 1]
     boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
 
     def update(frame):
-        # Load the data required for a basic voronoi plot
-        data = np.load(state_files[frame])
+        data = load_state(state_files[frame])
+
         cell_points = data["cell_points"]
         circumcenters = data["circumcenters"]
-        triangles = data["triangles"]
+        cell_triangles = data["cell_triangles"]
         cell_types = data["cell_types"]
-        num_cells = np.sum(cell_types != -1)
 
-        # Clear old patches
-        for p in patches:
-            if p is not None:
-                p.remove()
-        patches.clear()
+        polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
 
-        # Rebuild new patches
-        polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
-        for i in range(num_cells):
-            polygon = polygons[i]
-            if cell_types[i] == 1 or len(polygon) == 0:
-                patches.append(None)
-                continue
+        polygon_collection.set_verts(polygons)
+        polygon_collection.set_facecolors(colours)
 
-            colour = "orange" if cell_types[i] == 2 else "lightgray"
-            patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor='black', linewidth=0.5)
-            ax.add_patch(patch)
-            patches.append(patch)
-
-        # Update boundary points
-        boundary_mask = cell_types == 1
-        boundary_points = cell_points[boundary_mask]
+        boundary_points = cell_points[cell_types == 1]
         boundary_scatter.set_offsets(boundary_points)
 
-        return patches + [boundary_scatter]
-       
-    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=False)
+        return polygon_collection, boundary_scatter
+
+    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
 
 def spring_animation(state_files, params):
-    initial_data = np.load(state_files[0])
+    initial_data = load_state(state_files[0])
+
     cell_points = initial_data["cell_points"]
     circumcenters = initial_data["circumcenters"]
-    triangles = initial_data["triangles"]
+    cell_triangles = initial_data["cell_triangles"]
     cell_types = initial_data["cell_types"]
     adjacency = initial_data["adjacency"]
-    num_cells = np.sum(cell_types != -1)
+
     spring_length = params["spring_length"]
     spring_constant = params["spring_constant"]
-    polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
+
+    polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
+    segments, edges = get_spring_segments(cell_points, adjacency)
+    spring_forces = get_spring_forces(cell_points, edges, spring_length, spring_constant)
+
+    x_min, x_max, y_min, y_max = get_plot_limits(state_files)
+
+    max_force = 1e-12
+
+    for state_file in state_files:
+        with np.load(state_file) as data:
+            frame_segments, frame_edges = get_spring_segments(data["cell_points"], data["adjacency"])
+            frame_forces = get_spring_forces(data["cell_points"], frame_edges, spring_length, spring_constant)
+
+            if len(frame_forces) > 0:
+                max_force = max(max_force, np.max(np.abs(frame_forces)))
+
+    norm = plt.Normalize(-max_force, max_force)
 
     fig, ax = plt.subplots()
     ax.set_aspect("equal")
-    ax.set_xlim(np.min(cell_points[:, 0]) - 1, np.max(cell_points[:, 0]) + 1)
-    ax.set_ylim(np.min(cell_points[:, 1]) - 1, np.max(cell_points[:, 1]) + 1)
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
 
-    patches = [None] * num_cells
-    for i in range(num_cells):
-        polygon = polygons[i]
-        if cell_types[i] == 1 or len(polygon) == 0:
-            continue
+    polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.5)
+    ax.add_collection(polygon_collection)
 
-        colour = "orange" if cell_types[i] == 2 else "lightgray"
-        patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor="black", linewidth=0.5)
-        ax.add_patch(patch)
-        patches[i] = patch
-
-    boundary_mask = cell_types == 1
-    boundary_points = cell_points[boundary_mask]
+    boundary_points = cell_points[cell_types == 1]
     boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
 
-    springs = []
-    spring_forces = []
+    spring_collection = LineCollection(segments, cmap="coolwarm", norm=norm, linewidths=0.75)
+    spring_collection.set_array(spring_forces)
+    ax.add_collection(spring_collection)
 
-    for triangle in triangles:
-        if np.any(triangle == -1):
-            continue
-
-        a, b, c = triangle
-
-        for i, j in ((a, b), (b, c), (c, a)):
-            if j not in adjacency[i]:
-                continue
-
-            springs.append([cell_points[i], cell_points[j]])
-
-            distance = np.linalg.norm(cell_points[j] - cell_points[i])
-            spring_force = spring_constant * (distance - spring_length)
-            spring_forces.append(spring_force)
-
-    spring_forces = np.asarray(spring_forces)
-
-    max_force = max(np.max(np.abs(spring_forces)), 1e-12)
-    norm = plt.Normalize(-max_force, max_force)
-
-    springs_line_collection = LineCollection(springs, cmap="viridis", norm=norm, linewidths=1.0)
-    springs_line_collection.set_array(spring_forces)
-    ax.add_collection(springs_line_collection)
-
-    colorbar = fig.colorbar(springs_line_collection, ax=ax)
+    colorbar = fig.colorbar(spring_collection, ax=ax)
     colorbar.set_label("Spring force")
 
     def update(frame):
-        data = np.load(state_files[frame])
+        data = load_state(state_files[frame])
+
         cell_points = data["cell_points"]
         circumcenters = data["circumcenters"]
-        triangles = data["triangles"]
+        cell_triangles = data["cell_triangles"]
         cell_types = data["cell_types"]
         adjacency = data["adjacency"]
-        num_cells = np.sum(cell_types != -1)
 
-        for patch in patches:
-            if patch is not None:
-                patch.remove()
+        polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
+        polygon_collection.set_verts(polygons)
+        polygon_collection.set_facecolors(colours)
 
-        patches.clear()
-
-        polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
-
-        for i in range(num_cells):
-            polygon = polygons[i]
-
-            if cell_types[i] == 1 or len(polygon) == 0:
-                patches.append(None)
-                continue
-
-            colour = "orange" if cell_types[i] == 2 else "lightgray"
-            patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor="black", linewidth=0.5)
-            ax.add_patch(patch)
-            patches.append(patch)
-
-        boundary_mask = cell_types == 1
-        boundary_points = cell_points[boundary_mask]
+        boundary_points = cell_points[cell_types == 1]
         boundary_scatter.set_offsets(boundary_points)
 
-        springs = []
-        spring_forces = []
+        segments, edges = get_spring_segments(cell_points, adjacency)
+        spring_forces = get_spring_forces(cell_points, edges, spring_length, spring_constant)
 
-        for triangle in triangles:
-            if np.any(triangle == -1):
-                continue
+        spring_collection.set_segments(segments)
+        spring_collection.set_array(spring_forces)
 
-            a, b, c = triangle
-
-            for i, j in ((a, b), (b, c), (c, a)):
-                if j not in adjacency[i]:
-                    continue
-
-                springs.append([cell_points[i], cell_points[j]])
-
-                distance = np.linalg.norm(cell_points[j] - cell_points[i])
-                spring_force = spring_constant * (distance - spring_length)
-                spring_forces.append(spring_force)
-
-        spring_forces = np.asarray(spring_forces)
-
-        springs_line_collection.set_segments(springs)
-        springs_line_collection.set_array(spring_forces)
-
-        artists = [patch for patch in patches if patch is not None]
-        return artists + [boundary_scatter, springs_line_collection]
+        return polygon_collection, boundary_scatter, spring_collection
 
     return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
+
 
 def compute_major_axis(polygon):
     pts = np.asarray(polygon, dtype=np.float64)
@@ -298,202 +323,310 @@ def compute_major_axis(polygon):
 
 
 def major_axes_animation(state_files, params):
-    # Load the initial points and set up the plot
-    initial_data = np.load(state_files[0])
+    initial_data = load_state(state_files[0])
+
     cell_points = initial_data["cell_points"]
     circumcenters = initial_data["circumcenters"]
-    triangles = initial_data["triangles"]
+    cell_triangles = initial_data["cell_triangles"]
     cell_types = initial_data["cell_types"]
-    num_cells = np.sum(cell_types != -1)
-    polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
 
-    # Set up plot configuration
+    polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
+    axis_segments = get_major_axis_segments(polygons)
+
+    x_min, x_max, y_min, y_max = get_plot_limits(state_files)
+
     fig, ax = plt.subplots()
     ax.set_aspect("equal")
-    ax.set_xlim(np.min(cell_points[:, 0]) - 1, np.max(cell_points[:, 0]) + 1)
-    ax.set_ylim(np.min(cell_points[:, 1]) - 1, np.max(cell_points[:, 1]) + 1)
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
 
-    # Draw cell polygon patches
-    patches = [None] * num_cells
-    for i in range(num_cells):
-        polygon = polygons[i]
-        if cell_types[i] == 1 or len(polygon) == 0:
-            continue
+    polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.5)
+    ax.add_collection(polygon_collection)
 
-        colour = "orange" if cell_types[i] == 2 else "lightgray"
-        patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor='black', linewidth=0.5)
-        ax.add_patch(patch)
-        patches[i] = patch
+    axis_collection = LineCollection(axis_segments, colors="red", linewidths=1.0)
+    ax.add_collection(axis_collection)
 
-    # Draw boundary points
-    boundary_mask = cell_types == 1
-    boundary_points = cell_points[boundary_mask]
+    boundary_points = cell_points[cell_types == 1]
     boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
-
-    # Draw major-axis lines initially
-    axis_lines = [None] * num_cells
-    for i in range(num_cells):
-        polygon = polygons[i]
-        if cell_types[i] == 1 or len(polygon) == 0:
-            continue
-        coords = compute_major_axis(polygon)
-        if coords is None:
-            axis_lines[i] = None
-            continue
-        x1, y1, x2, y2 = coords
-        ln, = ax.plot([x1, x2], [y1, y2], color="red", linewidth=1)
-        axis_lines[i] = ln
 
     def update(frame):
-        # Load the data required for a basic voronoi plot
-        data = np.load(state_files[frame])
+        data = load_state(state_files[frame])
+
         cell_points = data["cell_points"]
         circumcenters = data["circumcenters"]
-        triangles = data["triangles"]
+        cell_triangles = data["cell_triangles"]
         cell_types = data["cell_types"]
-        num_cells = np.sum(cell_types != -1)
 
-        # Clear old patches
-        for p in patches:
-            if p is not None:
-                p.remove()
-        patches.clear()
+        polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
 
-        # Also remove old axis lines
-        for ln in axis_lines:
-            if ln is not None:
-                try:
-                    ln.remove()
-                except Exception:
-                    pass
-        axis_lines.clear()
+        polygon_collection.set_verts(polygons)
+        polygon_collection.set_facecolors(colours)
 
-        # Rebuild new patches
-        polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
-        for i in range(num_cells):
-            polygon = polygons[i]
-            if cell_types[i] == 1 or len(polygon) == 0:
-                patches.append(None)
-                continue
+        axis_segments = get_major_axis_segments(polygons)
+        axis_collection.set_segments(axis_segments)
 
-            colour = "orange" if cell_types[i] == 2 else "lightgray"
-            patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor='black', linewidth=0.5)
-            ax.add_patch(patch)
-            patches.append(patch)
+        boundary_points = cell_points[cell_types == 1]
+        boundary_scatter.set_offsets(boundary_points)
 
-        # Recreate major-axis lines for this frame
-        for i in range(num_cells):
-            polygon = polygons[i]
-            if cell_types[i] == 1 or len(polygon) == 0:
-                axis_lines.append(None)
-                continue
-            coords = compute_major_axis(polygon)
-            if coords is None:
-                axis_lines.append(None)
-                continue
-            x1, y1, x2, y2 = coords
-            ln, = ax.plot([x1, x2], [y1, y2], color="red", linewidth=1)
-            axis_lines.append(ln)
+        return polygon_collection, axis_collection, boundary_scatter
 
-        # Update boundary points
-        boundary_mask = cell_types == 1
-        boundary_points = cell_points[boundary_mask]
-        if boundary_points.size > 0:
-            boundary_scatter.set_offsets(boundary_points)
-        else:
-            boundary_scatter.set_offsets(np.empty((0, 2)))
+    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
-        return patches + axis_lines + [boundary_scatter]
-
-    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=False)
 
 def boundary_animation(state_files, params):
-    # Load the initial points and set up the plot
-    initial_data = np.load(state_files[0])
+    initial_data = load_state(state_files[0])
+
     cell_points = initial_data["cell_points"]
     circumcenters = initial_data["circumcenters"]
-    triangles = initial_data["triangles"]
+    cell_triangles = initial_data["cell_triangles"]
     cell_types = initial_data["cell_types"]
-    num_cells = np.sum(cell_types != -1)
-    polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
+    boundary_cycle = initial_data["boundary_cycle"]
 
-    # Set up plot configuration
+    polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
+    boundary_points = cell_points[boundary_cycle]
+    closed_boundary = np.vstack((boundary_points, boundary_points[0]))
+
+    x_min, x_max, y_min, y_max = get_plot_limits(state_files)
+
     fig, ax = plt.subplots()
     ax.set_aspect("equal")
-    ax.set_xlim(np.min(cell_points[:, 0]) - 1, np.max(cell_points[:, 0]) + 1)
-    ax.set_ylim(np.min(cell_points[:, 1]) - 1, np.max(cell_points[:, 1]) + 1)
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
 
-    # Draw cell polygon patches
-    patches = [None] * num_cells
-    for i in range(num_cells):
-        polygon = polygons[i]
-        if cell_types[i] == 1 or len(polygon) == 0:
-            continue
+    polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.5)
+    ax.add_collection(polygon_collection)
 
-        colour = "orange" if cell_types[i] == 2 else "lightgray"
-        patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor="black", linewidth=0.5)
-        ax.add_patch(patch)
-        patches[i] = patch
-
-    # Draw boundary points
-    boundary_mask = cell_types == 1
-    boundary_points = cell_points[boundary_mask]
     boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
-
-    # Draw boundary cycle
-    center = np.mean(boundary_points, axis=0)
-    relative_points = boundary_points - center
-    angles = np.arctan2(relative_points[:, 1], relative_points[:, 0])
-    order = np.argsort(angles)
-    ordered_boundary_points = boundary_points[order]
-    closed_boundary = np.vstack([ordered_boundary_points, ordered_boundary_points[0]])
     boundary_line, = ax.plot(closed_boundary[:, 0], closed_boundary[:, 1], color="red", linewidth=1.5)
 
     def update(frame):
-        # Load the data required for a basic Voronoi plot
-        data = np.load(state_files[frame])
+        data = load_state(state_files[frame])
+
         cell_points = data["cell_points"]
         circumcenters = data["circumcenters"]
-        triangles = data["triangles"]
+        cell_triangles = data["cell_triangles"]
         cell_types = data["cell_types"]
-        num_cells = np.sum(cell_types != -1)
+        boundary_cycle = data["boundary_cycle"]
 
-        # Clear old patches
-        for p in patches:
-            if p is not None:
-                p.remove()
-        patches.clear()
+        polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
+        polygon_collection.set_verts(polygons)
+        polygon_collection.set_facecolors(colours)
 
-        # Rebuild new patches
-        polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
-        for i in range(num_cells):
-            polygon = polygons[i]
-            if cell_types[i] == 1 or len(polygon) == 0:
-                patches.append(None)
-                continue
+        boundary_points = cell_points[boundary_cycle]
+        closed_boundary = np.vstack((boundary_points, boundary_points[0]))
 
-            colour = "orange" if cell_types[i] == 2 else "lightgray"
-            patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor="black", linewidth=0.5)
-            ax.add_patch(patch)
-            patches.append(patch)
+        boundary_scatter.set_offsets(boundary_points)
+        boundary_line.set_data(closed_boundary[:, 0], closed_boundary[:, 1])
 
-        # Update boundary points
-        boundary_mask = cell_types == 1
-        boundary_points = cell_points[boundary_mask]
+        return polygon_collection, boundary_scatter, boundary_line
+
+    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
+
+
+def force_vectors_animation(state_files, params):
+    initial_data = load_state(state_files[0])
+
+    cell_points = initial_data["cell_points"]
+    circumcenters = initial_data["circumcenters"]
+    cell_triangles = initial_data["cell_triangles"]
+    cell_types = initial_data["cell_types"]
+    total_force = initial_data["total_force"]
+
+    x_min, x_max, y_min, y_max = get_plot_limits(state_files)
+
+    max_force = 1e-12
+
+    for state_file in state_files:
+        with np.load(state_file) as data:
+            real_mask = get_real_mask(data["cell_types"])
+            forces = data["total_force"][real_mask]
+
+            if len(forces) > 0:
+                max_force = max(max_force, np.max(np.linalg.norm(forces, axis=1)))
+
+    polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
+
+    real_mask = get_real_mask(cell_types)
+    real_points = cell_points[real_mask]
+    real_forces = total_force[real_mask] / max_force
+
+    boundary_points = cell_points[cell_types == 1]
+
+    fig, ax = plt.subplots()
+    ax.set_aspect("equal")
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+
+    polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.5)
+    ax.add_collection(polygon_collection)
+
+    boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
+
+    quiver = ax.quiver(real_points[:, 0], real_points[:, 1], real_forces[:, 0], real_forces[:, 1], angles="xy", scale_units="xy", scale=1.5)
+
+    def update(frame):
+        data = load_state(state_files[frame])
+
+        cell_points = data["cell_points"]
+        circumcenters = data["circumcenters"]
+        cell_triangles = data["cell_triangles"]
+        cell_types = data["cell_types"]
+        total_force = data["total_force"]
+
+        polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
+        polygon_collection.set_verts(polygons)
+        polygon_collection.set_facecolors(colours)
+
+        real_mask = get_real_mask(cell_types)
+        real_points = cell_points[real_mask]
+        real_forces = total_force[real_mask] / max_force
+
+        quiver.set_offsets(real_points)
+        quiver.set_UVC(real_forces[:, 0], real_forces[:, 1])
+
+        boundary_points = cell_points[cell_types == 1]
         boundary_scatter.set_offsets(boundary_points)
 
-        # Update boundary cycle
-        if len(boundary_points) >= 2:
-            center = np.mean(boundary_points, axis=0)
-            relative_points = boundary_points - center
-            angles = np.arctan2(relative_points[:, 1], relative_points[:, 0])
-            order = np.argsort(angles)
-            ordered_boundary_points = boundary_points[order]
-            closed_boundary = np.vstack([ordered_boundary_points, ordered_boundary_points[0]])
-            boundary_line.set_data(closed_boundary[:, 0], closed_boundary[:, 1])
-        else:
-            boundary_line.set_data([], [])
+        return polygon_collection, boundary_scatter, quiver
 
-        return patches + [boundary_scatter, boundary_line]
+    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
-    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=False)
+
+def force_field_animation(state_files, params, grid_size=50):
+    initial_data = load_state(state_files[0])
+
+    x_min, x_max, y_min, y_max = get_plot_limits(state_files)
+
+    grid_x, grid_y = np.meshgrid(np.linspace(x_min, x_max, grid_size), np.linspace(y_min, y_max, grid_size))
+
+    cell_points = initial_data["cell_points"]
+    circumcenters = initial_data["circumcenters"]
+    cell_triangles = initial_data["cell_triangles"]
+    cell_types = initial_data["cell_types"]
+    total_force = initial_data["total_force"]
+
+    polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
+
+    real_mask = get_real_mask(cell_types)
+    real_points = cell_points[real_mask]
+    real_forces = total_force[real_mask]
+
+    grid_fx = griddata(real_points, real_forces[:, 0], (grid_x, grid_y), method="linear")
+    grid_fy = griddata(real_points, real_forces[:, 1], (grid_x, grid_y), method="linear")
+
+    fig, ax = plt.subplots()
+    ax.set_aspect("equal")
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+
+    # Faint tissue underneath
+    polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.4, alpha=0.25, zorder=1)
+    ax.add_collection(polygon_collection)
+
+    # Faint boundary points
+    boundary_points = cell_points[cell_types == 1]
+    boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=8, alpha=0.4, zorder=2)
+
+    # Force field on top
+    quiver = ax.quiver(grid_x, grid_y, grid_fx, grid_fy, angles="xy", zorder=3)
+
+    def update(frame):
+        data = load_state(state_files[frame])
+
+        cell_points = data["cell_points"]
+        circumcenters = data["circumcenters"]
+        cell_triangles = data["cell_triangles"]
+        cell_types = data["cell_types"]
+        total_force = data["total_force"]
+
+        # Update tissue
+        polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
+        polygon_collection.set_verts(polygons)
+        polygon_collection.set_facecolors(colours)
+
+        # Update boundary points
+        boundary_points = cell_points[cell_types == 1]
+        boundary_scatter.set_offsets(boundary_points)
+
+        # Update force field
+        real_mask = get_real_mask(cell_types)
+        real_points = cell_points[real_mask]
+        real_forces = total_force[real_mask]
+
+        grid_fx = griddata(real_points, real_forces[:, 0], (grid_x, grid_y), method="linear")
+        grid_fy = griddata(real_points, real_forces[:, 1], (grid_x, grid_y), method="linear")
+
+        quiver.set_UVC(grid_fx, grid_fy)
+
+        return polygon_collection, boundary_scatter, quiver
+
+    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
+
+
+def area_strain_animation(state_files, params):
+    initial_data = load_state(state_files[0])
+
+    cell_points = initial_data["cell_points"]
+    circumcenters = initial_data["circumcenters"]
+    cell_triangles = initial_data["cell_triangles"]
+    cell_types = initial_data["cell_types"]
+    target_areas = initial_data["target_areas"]
+
+    x_min, x_max, y_min, y_max = get_plot_limits(state_files)
+
+    # Determine a single colour scale for the entire animation
+    max_strain = 1e-12
+
+    for state_file in state_files:
+        with np.load(state_file) as data:
+            _, strains = get_area_strains(data["cell_types"], data["target_areas"], data["circumcenters"], data["cell_triangles"])
+
+            if len(strains) > 0:
+                max_strain = max(max_strain, np.max(np.abs(strains)))
+
+    norm = plt.Normalize(-max_strain, max_strain)
+    cmap = plt.get_cmap("coolwarm")
+
+    polygons, strains = get_area_strains(cell_types, target_areas, circumcenters, cell_triangles)
+
+    multiciliated_points = cell_points[cell_types == 2]
+    boundary_points = cell_points[cell_types == 1]
+
+    fig, ax = plt.subplots()
+    ax.set_aspect("equal")
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+
+    polygon_collection = PolyCollection(polygons, array=strains, cmap=cmap, norm=norm, edgecolors="black", linewidths=0.5)
+    ax.add_collection(polygon_collection)
+
+    boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10, zorder=2)
+
+    multiciliated_scatter = ax.scatter(multiciliated_points[:, 0], multiciliated_points[:, 1], color="black", s=10, zorder=3)
+
+    colorbar = fig.colorbar(polygon_collection, ax=ax)
+    colorbar.set_label("Relative area strain")
+
+    def update(frame):
+        data = load_state(state_files[frame])
+
+        cell_points = data["cell_points"]
+        circumcenters = data["circumcenters"]
+        cell_triangles = data["cell_triangles"]
+        cell_types = data["cell_types"]
+        target_areas = data["target_areas"]
+
+        polygons, strains = get_area_strains(cell_types, target_areas, circumcenters, cell_triangles)
+
+        polygon_collection.set_verts(polygons)
+        polygon_collection.set_array(strains)
+
+        boundary_points = cell_points[cell_types == 1]
+        boundary_scatter.set_offsets(boundary_points)
+
+        multiciliated_points = cell_points[cell_types == 2]
+        multiciliated_scatter.set_offsets(multiciliated_points)
+
+        return polygon_collection, boundary_scatter, multiciliated_scatter
+
+    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)

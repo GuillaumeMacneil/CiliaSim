@@ -6,7 +6,7 @@ from ciliasim import tissue
 
 tissue = tissue.Tissue(
             x = 30, 
-            y = 10, 
+            y = 20, 
             density = 0.06,
             center_only=False,
             random_layout=True,

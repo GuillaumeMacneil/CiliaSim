@@ -73,8 +73,7 @@ class Tissue():
         self.max_triangles = (2 * self.max_cells) - 5
         self.triangles = np.full((self.max_triangles, 3), -1, dtype=np.int32)
         self.cell_triangles = np.full((self.max_cells, self.max_degree), -1, dtype=np.int32)
-        # FIXME: Provide a proper default initialisation
-        self.boundary_cycle = None
+        self.boundary_cycle = np.zeros(self.max_cells, dtype=np.int32)
         self.boundary_cycle_mask = np.zeros(self.max_cells, dtype=bool)
 
         # Force state arrays
@@ -247,9 +246,11 @@ class Tissue():
                         adjacency = self.adjacency,
                         triangles = self.triangles,
                         cell_triangles = self.cell_triangles,
-                        boundary_cycle_mask = self.boundary_cycle_mask
+                        boundary_cycle_mask = self.boundary_cycle_mask,
+                        boundary_cycle = self.boundary_cycle,
+                        internal_force = internal_force,
+                        total_force = total_force,
                     )
-
 
             self.iteration += 1
 
