@@ -68,6 +68,60 @@ For a regular triangular lattice with nearest-neighbour spacing $l_0$, the corre
 A_0 = \frac{\sqrt{3}}{2}l_0^2
 ```
 
+### Using the templates
+
+The `templates/` directory contains simple starting points for common simulation configurations:
+
+| Template | Description |
+| --- | --- |
+| `hexagonal_center.py` | Hexagonal tissue with a single central MCC |
+| `random_center.py` | Random tissue with a single central MCC |
+| `random_tissue.py` | Random tissue with MCCs distributed throughout the tissue |
+| `examine.py` | Load and visualize a saved simulation |
+
+The simulation templates can be run directly with `uv`. For example:
+
+```bash
+uv run templates/hexagonal_center.py
+```
+
+Each template exposes the main simulation parameters near the top of the file and is intended to be copied or edited for a particular experiment.
+
+For example, change:
+
+```python
+N = 20
+```
+
+to alter the requested tissue dimensions, or modify the simulation and force parameters passed to `Tissue`.
+
+To visualize a saved simulation, run:
+
+```bash
+uv run templates/examine.py
+```
+
+By default, `examine.py` loads the most recent simulation in `simulations/`, using the timestamp encoded in the simulation directory name and falling back to its modification time if necessary.
+
+To examine a particular simulation instead, set `simulation_dir` directly in the template:
+
+```python
+simulation_dir = Path(
+    "simulations/25-11-26_14-23-26_20x20_center_hexagonal/"
+)
+```
+
+The visualization type can be changed through the `plot_type` argument:
+
+```python
+simulation.animate(
+    plot_type="major-axes",
+    save=True,
+)
+```
+
+Available plot types include `basic`, `spring`, `major-axes`, `boundary`, `force-vectors`, `force-field`, and `area-strain`.
+
 ## Tissue initialization
 
 CiliaSim currently supports two initial tissue layouts.
