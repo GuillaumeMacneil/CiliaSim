@@ -52,3 +52,21 @@ def calculate_cell_areas(circumcenters, cell_triangles):
     cross_products = jnp.where(valid, cross_products, 0.0)
 
     return 0.5 * jnp.abs(jnp.sum(cross_products, axis=1))
+
+def calculate_cell_perimeters(circumcenters, cell_triangles):
+    valid = cell_triangles != -1
+    safe_cell_triangles = jnp.where(valid, cell_triangles, 0)
+    vertices = circumcenters[safe_cell_triangles]
+
+    num_vertices = jnp.sum(valid, axis=1)
+    positions = jnp.arange(cell_triangles.shape[1])[None, :]
+    next_positions = jnp.where(positions + 1 < num_vertices[:, None], positions + 1, 0)
+    next_vertices = jnp.take_along_axis(vertices, next_positions[..., None], axis=1)
+
+    edge_vectors = next_vertices - vertices
+    squared_lengths = jnp.sum(edge_vectors ** 2, axis=-1)
+
+    edge_lengths = jnp.sqrt(squared_lengths + 1e-12)
+    edge_lengths = jnp.where(valid, edge_lengths, 0.0)
+
+    return jnp.sum(edge_lengths, axis=1)

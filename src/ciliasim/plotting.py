@@ -124,16 +124,71 @@ def get_area_strains(cell_types, target_areas, circumcenters, cell_triangles):
     return polygons, np.asarray(strains)
 
 
+def get_reporter_text(data):
+    cell_types = data["cell_types"]
+    internal_force = data["internal_force"]
+    cilia_force = data["cilia_force"]
+    flow_force = data["flow_force"]
+
+    real_mask = get_real_mask(cell_types)
+    mcc_mask = cell_types == 2
+
+    internal_magnitudes = np.linalg.norm(internal_force[real_mask], axis=1)
+    cilia_magnitudes = np.linalg.norm(cilia_force[mcc_mask], axis=1)
+
+    iteration = int(data["iteration"])
+    num_cells = np.sum(real_mask)
+    num_mcc = np.sum(mcc_mask)
+    num_boundary = np.sum(cell_types == 1)
+
+    mean_internal = np.mean(internal_magnitudes) if len(internal_magnitudes) > 0 else 0.0
+    max_internal = np.max(internal_magnitudes) if len(internal_magnitudes) > 0 else 0.0
+
+    mean_cilia = np.mean(cilia_magnitudes) if len(cilia_magnitudes) > 0 else 0.0
+    max_cilia = np.max(cilia_magnitudes) if len(cilia_magnitudes) > 0 else 0.0
+
+    flow_magnitude = np.linalg.norm(flow_force)
+
+    return (
+        f"Iteration: {iteration:,}    "
+        f"Cells: {num_cells:,}    "
+        f"MCCs: {num_mcc:,}    "
+        f"Boundary: {num_boundary:,}\n"
+        f"Internal |F|: {mean_internal:.3e} mean / {max_internal:.3e} max\n"
+        f"Ciliary |F|: {mean_cilia:.3e} mean / {max_cilia:.3e} max    "
+        f"Flow |F|: {flow_magnitude:.3e}"
+    )
+
+
+def add_reporter(ax, data):
+    return ax.text(
+        0.02,
+        0.98,
+        get_reporter_text(data),
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontsize=8,
+        family="monospace",
+        bbox={
+            "facecolor": "white",
+            "edgecolor": "black",
+            "alpha": 0.8,
+            "pad": 4,
+        },
+        zorder=100,
+    )
+
+
 def basic_animation(state_files, params):
     initial_data = load_state(state_files[0])
 
     cell_points = initial_data["cell_points"]
     circumcenters = initial_data["circumcenters"]
-    cell_triangles = initial_data["triangles"]
+    cell_triangles = initial_data["cell_triangles"]
     cell_types = initial_data["cell_types"]
 
     polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
-
     x_min, x_max, y_min, y_max = get_plot_limits(state_files)
 
     fig, ax = plt.subplots()
@@ -147,6 +202,8 @@ def basic_animation(state_files, params):
     boundary_points = cell_points[cell_types == 1]
     boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
 
+    reporter = add_reporter(ax, initial_data)
+
     def update(frame):
         data = load_state(state_files[frame])
 
@@ -156,14 +213,15 @@ def basic_animation(state_files, params):
         cell_types = data["cell_types"]
 
         polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
-
         polygon_collection.set_verts(polygons)
         polygon_collection.set_facecolors(colours)
 
         boundary_points = cell_points[cell_types == 1]
         boundary_scatter.set_offsets(boundary_points)
 
-        return polygon_collection, boundary_scatter
+        reporter.set_text(get_reporter_text(data))
+
+        return polygon_collection, boundary_scatter, reporter
 
     return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
@@ -190,7 +248,7 @@ def spring_animation(state_files, params):
 
     for state_file in state_files:
         with np.load(state_file) as data:
-            frame_segments, frame_edges = get_spring_segments(data["cell_points"], data["adjacency"])
+            _, frame_edges = get_spring_segments(data["cell_points"], data["adjacency"])
             frame_forces = get_spring_forces(data["cell_points"], frame_edges, spring_length, spring_constant)
 
             if len(frame_forces) > 0:
@@ -216,6 +274,8 @@ def spring_animation(state_files, params):
     colorbar = fig.colorbar(spring_collection, ax=ax)
     colorbar.set_label("Spring force")
 
+    reporter = add_reporter(ax, initial_data)
+
     def update(frame):
         data = load_state(state_files[frame])
 
@@ -238,7 +298,9 @@ def spring_animation(state_files, params):
         spring_collection.set_segments(segments)
         spring_collection.set_array(spring_forces)
 
-        return polygon_collection, boundary_scatter, spring_collection
+        reporter.set_text(get_reporter_text(data))
+
+        return polygon_collection, boundary_scatter, spring_collection, reporter
 
     return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
@@ -349,6 +411,8 @@ def major_axes_animation(state_files, params):
     boundary_points = cell_points[cell_types == 1]
     boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
 
+    reporter = add_reporter(ax, initial_data)
+
     def update(frame):
         data = load_state(state_files[frame])
 
@@ -368,7 +432,9 @@ def major_axes_animation(state_files, params):
         boundary_points = cell_points[cell_types == 1]
         boundary_scatter.set_offsets(boundary_points)
 
-        return polygon_collection, axis_collection, boundary_scatter
+        reporter.set_text(get_reporter_text(data))
+
+        return polygon_collection, axis_collection, boundary_scatter, reporter
 
     return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
@@ -399,6 +465,8 @@ def boundary_animation(state_files, params):
     boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
     boundary_line, = ax.plot(closed_boundary[:, 0], closed_boundary[:, 1], color="red", linewidth=1.5)
 
+    reporter = add_reporter(ax, initial_data)
+
     def update(frame):
         data = load_state(state_files[frame])
 
@@ -418,7 +486,9 @@ def boundary_animation(state_files, params):
         boundary_scatter.set_offsets(boundary_points)
         boundary_line.set_data(closed_boundary[:, 0], closed_boundary[:, 1])
 
-        return polygon_collection, boundary_scatter, boundary_line
+        reporter.set_text(get_reporter_text(data))
+
+        return polygon_collection, boundary_scatter, boundary_line, reporter
 
     return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
@@ -464,6 +534,8 @@ def force_vectors_animation(state_files, params):
 
     quiver = ax.quiver(real_points[:, 0], real_points[:, 1], real_forces[:, 0], real_forces[:, 1], angles="xy", scale_units="xy", scale=1.5)
 
+    reporter = add_reporter(ax, initial_data)
+
     def update(frame):
         data = load_state(state_files[frame])
 
@@ -487,7 +559,9 @@ def force_vectors_animation(state_files, params):
         boundary_points = cell_points[cell_types == 1]
         boundary_scatter.set_offsets(boundary_points)
 
-        return polygon_collection, boundary_scatter, quiver
+        reporter.set_text(get_reporter_text(data))
+
+        return polygon_collection, boundary_scatter, quiver, reporter
 
     return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
@@ -519,16 +593,15 @@ def force_field_animation(state_files, params, grid_size=50):
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
 
-    # Faint tissue underneath
     polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.4, alpha=0.25, zorder=1)
     ax.add_collection(polygon_collection)
 
-    # Faint boundary points
     boundary_points = cell_points[cell_types == 1]
     boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=8, alpha=0.4, zorder=2)
 
-    # Force field on top
     quiver = ax.quiver(grid_x, grid_y, grid_fx, grid_fy, angles="xy", zorder=3)
+
+    reporter = add_reporter(ax, initial_data)
 
     def update(frame):
         data = load_state(state_files[frame])
@@ -539,16 +612,13 @@ def force_field_animation(state_files, params, grid_size=50):
         cell_types = data["cell_types"]
         total_force = data["total_force"]
 
-        # Update tissue
         polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
         polygon_collection.set_verts(polygons)
         polygon_collection.set_facecolors(colours)
 
-        # Update boundary points
         boundary_points = cell_points[cell_types == 1]
         boundary_scatter.set_offsets(boundary_points)
 
-        # Update force field
         real_mask = get_real_mask(cell_types)
         real_points = cell_points[real_mask]
         real_forces = total_force[real_mask]
@@ -558,7 +628,9 @@ def force_field_animation(state_files, params, grid_size=50):
 
         quiver.set_UVC(grid_fx, grid_fy)
 
-        return polygon_collection, boundary_scatter, quiver
+        reporter.set_text(get_reporter_text(data))
+
+        return polygon_collection, boundary_scatter, quiver, reporter
 
     return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
@@ -574,20 +646,16 @@ def area_strain_animation(state_files, params):
 
     x_min, x_max, y_min, y_max = get_plot_limits(state_files)
 
-    # Determine a single colour scale for the entire animation
-    max_strain = 1e-12
-
-    for state_file in state_files:
-        with np.load(state_file) as data:
-            _, strains = get_area_strains(data["cell_types"], data["target_areas"], data["circumcenters"], data["cell_triangles"])
-
-            if len(strains) > 0:
-                max_strain = max(max_strain, np.max(np.abs(strains)))
-
-    norm = plt.Normalize(-max_strain, max_strain)
-    cmap = plt.get_cmap("coolwarm")
-
     polygons, strains = get_area_strains(cell_types, target_areas, circumcenters, cell_triangles)
+
+    min_strain = np.min(strains)
+    max_strain = np.max(strains)
+
+    if min_strain == max_strain:
+        min_strain -= 1e-12
+        max_strain += 1e-12
+
+    norm = plt.Normalize(min_strain, max_strain)
 
     multiciliated_points = cell_points[cell_types == 2]
     boundary_points = cell_points[cell_types == 1]
@@ -597,15 +665,16 @@ def area_strain_animation(state_files, params):
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
 
-    polygon_collection = PolyCollection(polygons, array=strains, cmap=cmap, norm=norm, edgecolors="black", linewidths=0.5)
+    polygon_collection = PolyCollection(polygons, array=strains, cmap="coolwarm", norm=norm, edgecolors="black", linewidths=0.5)
     ax.add_collection(polygon_collection)
 
     boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10, zorder=2)
-
     multiciliated_scatter = ax.scatter(multiciliated_points[:, 0], multiciliated_points[:, 1], color="black", s=10, zorder=3)
 
     colorbar = fig.colorbar(polygon_collection, ax=ax)
     colorbar.set_label("Relative area strain")
+
+    reporter = add_reporter(ax, initial_data)
 
     def update(frame):
         data = load_state(state_files[frame])
@@ -618,8 +687,16 @@ def area_strain_animation(state_files, params):
 
         polygons, strains = get_area_strains(cell_types, target_areas, circumcenters, cell_triangles)
 
+        min_strain = np.min(strains)
+        max_strain = np.max(strains)
+
+        if min_strain == max_strain:
+            min_strain -= 1e-12
+            max_strain += 1e-12
+
         polygon_collection.set_verts(polygons)
         polygon_collection.set_array(strains)
+        polygon_collection.set_clim(min_strain, max_strain)
 
         boundary_points = cell_points[cell_types == 1]
         boundary_scatter.set_offsets(boundary_points)
@@ -627,6 +704,9 @@ def area_strain_animation(state_files, params):
         multiciliated_points = cell_points[cell_types == 2]
         multiciliated_scatter.set_offsets(multiciliated_points)
 
-        return polygon_collection, boundary_scatter, multiciliated_scatter
+        colorbar.update_normal(polygon_collection)
+        reporter.set_text(get_reporter_text(data))
+
+        return polygon_collection, boundary_scatter, multiciliated_scatter, reporter
 
     return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)

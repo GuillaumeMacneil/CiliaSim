@@ -17,6 +17,7 @@ class Tissue():
             spring_length: float = 1.0,
             spring_constant: float = 1.0,
             area_constant: float = 1.0,
+            perimeter_constant: float = 1.0,
             oversize_factor: float = 3.0,
             max_degree: int = 15,
             center_only: bool = False,
@@ -42,6 +43,7 @@ class Tissue():
         self.spring_length = spring_length
         self.spring_constant = spring_constant
         self.area_constant = area_constant
+        self.perimeter_constant = perimeter_constant
  
         # Composition parameters
         self.density = density
@@ -160,8 +162,6 @@ class Tissue():
         else:
             self.target_areas = initialisation.normal_random_target_areas(self.cell_types, self.num_cells, area_distribution[0], area_distribution[1])
 
-        #self.evaluate_boundary()
-        
     def set_uniform_ciliary_forces(self, direction: np.ndarray, magnitude: float):
         force = direction * magnitude
         multiciliated_cells = np.where(self.cell_types == 2)[0]
@@ -226,6 +226,7 @@ class Tissue():
                 self.spring_length,
                 self.spring_constant,
                 self.area_constant,
+                self.perimeter_constant,
             )
 
             internal_force = np.asarray(internal_force)
@@ -276,6 +277,7 @@ class Tissue():
                     circumcenters = geometry.calculate_circumcenters(self.cell_points, self.triangles)
                     np.savez_compressed(
                         self.output_path / f"{self.iteration:06d}.npz",
+                        iteration = self.iteration,
                         cell_points = self.cell_points,
                         circumcenters = circumcenters,
                         cell_types = self.cell_types,
@@ -286,13 +288,15 @@ class Tissue():
                         boundary_cycle_mask = self.boundary_cycle_mask,
                         boundary_cycle = self.boundary_cycle,
                         internal_force = internal_force,
+                        cilia_force = self.cilia_forces,
+                        flow_force = self.flow_force,
                         total_force = total_force,
                     )
 
             self.iteration += 1
 
 
-def calculate_energy(cell_points, cell_types, target_areas, triangles, cell_triangles, adjacency, spring_length, spring_constant, area_constant):
+def calculate_energy(cell_points, cell_types, target_areas, triangles, cell_triangles, adjacency, spring_length, spring_constant, area_constant, perimeter_constant):
     valid_neighbours = adjacency != -1
     safe_adjacency = jnp.where(valid_neighbours, adjacency, 0)
 
@@ -306,13 +310,20 @@ def calculate_energy(cell_points, cell_types, target_areas, triangles, cell_tria
     spring_energy = 0.25 * spring_constant * jnp.sum(jnp.where(valid_neighbours, spring_extensions ** 2, 0.0))
 
     circumcenters = geometry.calculate_circumcenters(cell_points, triangles)
+
     areas = geometry.calculate_cell_areas(circumcenters, cell_triangles)
+    perimeters = geometry.calculate_cell_perimeters(circumcenters, cell_triangles)
 
     real_cells = (cell_types != 1) & (cell_types != -1)
+
     area_errors = areas - target_areas
     area_energy = 0.5 * area_constant * jnp.sum(jnp.where(real_cells, area_errors ** 2, 0.0))
 
-    return spring_energy + area_energy
+    target_perimeter = 2.0 * jnp.sqrt(3.0) * spring_length
+    perimeter_errors = perimeters - target_perimeter
+    perimeter_energy = 0.5 * perimeter_constant * jnp.sum(jnp.where(real_cells, perimeter_errors ** 2, 0.0))
+
+    return spring_energy + area_energy + perimeter_energy
 
 
 calculate_forces = jax.jit(jax.grad(calculate_energy, argnums=0))
