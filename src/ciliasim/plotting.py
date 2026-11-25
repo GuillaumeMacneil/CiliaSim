@@ -6,19 +6,56 @@ from scipy.interpolate import griddata
 
 
 def load_state(state_file):
+    """
+    Load all arrays from a saved simulation state.
+
+    Args:
+        state_file: Path to the saved NPZ state.
+
+    Returns:
+        Dictionary mapping saved field names to arrays.
+    """
     with np.load(state_file) as data:
         return {key: data[key] for key in data.files}
 
 
 def get_real_mask(cell_types):
+    """
+    Identify non-boundary, non-vacant cells.
+
+    Args:
+        cell_types: Cell type array.
+
+    Returns:
+        Boolean mask identifying real tissue cells.
+    """
     return (cell_types != 1) & (cell_types != -1)
 
 
 def get_active_mask(cell_types):
+    """
+    Identify all active cells, including boundary cells.
+
+    Args:
+        cell_types: Cell type array.
+
+    Returns:
+        Boolean mask identifying non-vacant cells.
+    """
     return cell_types != -1
 
 
 def get_plot_limits(state_files, padding=1.0):
+    """
+    Determine fixed plot limits spanning all simulation states.
+
+    Args:
+        state_files: Ordered collection of saved state paths.
+        padding: Additional space added around the tissue bounds.
+
+    Returns:
+        Minimum and maximum x and y plot coordinates.
+    """
     x_min = np.inf
     x_max = -np.inf
     y_min = np.inf
@@ -28,6 +65,8 @@ def get_plot_limits(state_files, padding=1.0):
         with np.load(state_file) as data:
             cell_points = data["cell_points"]
             cell_types = data["cell_types"]
+
+            # Include boundary cells so the complete tissue remains visible.
             active_points = cell_points[get_active_mask(cell_types)]
 
             x_min = min(x_min, np.min(active_points[:, 0]))
@@ -39,6 +78,17 @@ def get_plot_limits(state_files, padding=1.0):
 
 
 def get_real_polygons(cell_types, circumcenters, cell_triangles):
+    """
+    Construct Voronoi polygons and display colours for real cells.
+
+    Args:
+        cell_types: Cell type array.
+        circumcenters: Circumcenter position for each triangle.
+        cell_triangles: Ordered incident-triangle indices for each cell.
+
+    Returns:
+        Voronoi polygons and their corresponding face colours.
+    """
     real_indices = np.where(get_real_mask(cell_types))[0]
 
     polygons = []
@@ -51,6 +101,7 @@ def get_real_polygons(cell_types, circumcenters, cell_triangles):
         if len(triangle_indices) < 3:
             continue
 
+        # Ordered circumcenters form the vertices of the cell's Voronoi polygon.
         polygons.append(circumcenters[triangle_indices])
         colours.append("orange" if cell_types[cell] == 2 else "lightgray")
 
@@ -58,14 +109,35 @@ def get_real_polygons(cell_types, circumcenters, cell_triangles):
 
 
 def get_spring_edges(adjacency):
+    """
+    Extract unique spring edges from symmetric cell adjacency.
+
+    Args:
+        adjacency: Padded cell adjacency array.
+
+    Returns:
+        Array of unique cell-index pairs connected by springs.
+    """
     rows, slots = np.where(adjacency >= 0)
     cols = adjacency[rows, slots]
+
+    # Keep each symmetric adjacency pair only once.
     keep = rows < cols
 
     return np.column_stack((rows[keep], cols[keep]))
 
 
 def get_spring_segments(cell_points, adjacency):
+    """
+    Construct line segments for all unique springs.
+
+    Args:
+        cell_points: Cell positions.
+        adjacency: Padded cell adjacency array.
+
+    Returns:
+        Spring line segments and their corresponding cell-index pairs.
+    """
     edges = get_spring_edges(adjacency)
 
     if len(edges) == 0:
@@ -77,6 +149,15 @@ def get_spring_segments(cell_points, adjacency):
 
 
 def get_major_axis_segments(polygons):
+    """
+    Calculate major-axis line segments for a collection of polygons.
+
+    Args:
+        polygons: Collection of Voronoi polygon vertices.
+
+    Returns:
+        Array of major-axis line segments.
+    """
     segments = []
 
     for polygon in polygons:
@@ -92,16 +173,41 @@ def get_major_axis_segments(polygons):
 
 
 def get_spring_forces(cell_points, edges, spring_length, spring_constant):
+    """
+    Calculate signed spring forces from cell separation.
+
+    Args:
+        cell_points: Cell positions.
+        edges: Cell-index pairs defining springs.
+        spring_length: Preferred spring length.
+        spring_constant: Spring stiffness.
+
+    Returns:
+        Signed force magnitude for each spring.
+    """
     if len(edges) == 0:
         return np.empty(0)
 
     differences = cell_points[edges[:, 1]] - cell_points[edges[:, 0]]
     distances = np.linalg.norm(differences, axis=1)
 
+    # Positive values indicate extension and negative values compression.
     return spring_constant * (distances - spring_length)
 
 
 def get_area_strains(cell_types, target_areas, circumcenters, cell_triangles):
+    """
+    Calculate relative area strain for each real Voronoi cell.
+
+    Args:
+        cell_types: Cell type array.
+        target_areas: Preferred area of each cell.
+        circumcenters: Circumcenter position for each triangle.
+        cell_triangles: Ordered incident-triangle indices for each cell.
+
+    Returns:
+        Voronoi polygons and their corresponding relative area strains.
+    """
     polygons = []
     strains = []
 
@@ -116,6 +222,7 @@ def get_area_strains(cell_types, target_areas, circumcenters, cell_triangles):
         x = polygon[:, 0]
         y = polygon[:, 1]
 
+        # Calculate polygon area using the shoelace formula.
         area = 0.5 * np.abs(np.sum(x * np.roll(y, -1) - y * np.roll(x, -1)))
 
         polygons.append(polygon)
@@ -125,6 +232,15 @@ def get_area_strains(cell_types, target_areas, circumcenters, cell_triangles):
 
 
 def get_reporter_text(data):
+    """
+    Format summary statistics for an animation frame.
+
+    Args:
+        data: Loaded simulation state containing forces, cell types, and iteration.
+
+    Returns:
+        Formatted reporter text for display over the animation.
+    """
     cell_types = data["cell_types"]
     internal_force = data["internal_force"]
     cilia_force = data["cilia_force"]
@@ -161,6 +277,16 @@ def get_reporter_text(data):
 
 
 def add_reporter(ax, data):
+    """
+    Add a simulation-state reporter to an animation axes.
+
+    Args:
+        ax: Matplotlib axes on which to place the reporter.
+        data: Initial simulation state used to populate the reporter.
+
+    Returns:
+        Matplotlib text artist containing the reporter.
+    """
     return ax.text(
         0.02,
         0.98,
@@ -181,6 +307,16 @@ def add_reporter(ax, data):
 
 
 def basic_animation(state_files, params):
+    """
+    Animate Voronoi cell geometry over a simulation.
+
+    Args:
+        state_files: Ordered collection of saved simulation states.
+        params: Static simulation parameters.
+
+    Returns:
+        Matplotlib animation of the tissue geometry.
+    """
     initial_data = load_state(state_files[0])
 
     cell_points = initial_data["cell_points"]
@@ -227,6 +363,16 @@ def basic_animation(state_files, params):
 
 
 def spring_animation(state_files, params):
+    """
+    Animate tissue geometry with springs coloured by signed force.
+
+    Args:
+        state_files: Ordered collection of saved simulation states.
+        params: Static simulation parameters including spring properties.
+
+    Returns:
+        Matplotlib animation of the tissue and spring forces.
+    """
     initial_data = load_state(state_files[0])
 
     cell_points = initial_data["cell_points"]
@@ -306,85 +452,105 @@ def spring_animation(state_files, params):
 
 
 def compute_major_axis(polygon):
-    pts = np.asarray(polygon, dtype=np.float64)
-    if pts.size == 0 or pts.shape[0] < 2:
+    """
+    Calculate the major axis of a polygon using principal component analysis.
+
+    Args:
+        polygon: Ordered Cartesian vertices of the polygon.
+
+    Returns:
+        Major-axis endpoints as (x1, y1, x2, y2), or None if the axis cannot
+        be determined.
+    """
+    vertices = np.asarray(polygon, dtype=np.float64)
+
+    if len(vertices) < 2:
         return None
 
-    center = pts.mean(axis=0)
-    diffs = pts - center
-    if np.allclose(diffs, 0):
+    centroid = np.mean(vertices, axis=0)
+    centered_vertices = vertices - centroid
+
+    if np.allclose(centered_vertices, 0):
         return None
 
-    # PCA: largest eigenvector
-    cov = (diffs.T @ diffs) / float(max(1, len(pts)))
+    covariance = centered_vertices.T @ centered_vertices / len(vertices)
+
     try:
-        _, eigvecs = np.linalg.eigh(cov)
-    except Exception:
+        eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+    except np.linalg.LinAlgError:
         return None
-    v = eigvecs[:, -1]
-    vnorm = np.linalg.norm(v)
-    if vnorm == 0:
+
+    major_direction = eigenvectors[:, np.argmax(eigenvalues)]
+    direction_norm = np.linalg.norm(major_direction)
+
+    if direction_norm == 0:
         return None
-    v = v / vnorm
 
-    # helper: intersection of infinite line (center + t*v) with segment (a -> b)
-    def line_segment_intersection(p0, v, a, b, tol=1e-12):
-        # Solve: a + s*(b-a) = p0 + t*v  ->  s*(b-a) - t*v = p0 - a
-        M = np.column_stack((b - a, -v))  # 2x2
-        det = np.linalg.det(M)
-        if abs(det) < tol:
-            return None
-        rhs = p0 - a
-        try:
-            sol = np.linalg.solve(M, rhs)
-        except np.linalg.LinAlgError:
-            return None
-        s = sol[0]
-        # s in [0,1] => intersection falls on the segment
-        if s < -1e-9 or s > 1 + 1e-9:
-            return None
-        t = sol[1]
-        return p0 + t * v
+    major_direction /= direction_norm
 
-    # collect intersections with all polygon edges
     intersections = []
-    N = pts.shape[0]
-    for i in range(N):
-        a = pts[i]
-        b = pts[(i + 1) % N]
-        ip = line_segment_intersection(center, v, a, b)
-        if ip is not None:
-            intersections.append(ip)
 
-    # unique intersections (within tolerance)
-    if len(intersections) > 0:
-        ints = np.vstack(intersections)
-        # remove duplicates
-        uniq = []
-        for p in ints:
-            if not any(np.allclose(p, q, atol=1e-8) for q in uniq):
-                uniq.append(p)
-        ints = np.vstack(uniq)
+    # Intersect the infinite major-axis line with each polygon edge.
+    for i in range(len(vertices)):
+        edge_start = vertices[i]
+        edge_end = vertices[(i + 1) % len(vertices)]
+        edge_direction = edge_end - edge_start
 
-    # If we have at least two intersections, pick min & max along v
-    if 'ints' in locals() and ints.shape[0] >= 2:
-        ts = (ints - center) @ v
-        tmin = ts.min()
-        tmax = ts.max()
-        p1 = center + v * tmin
-        p2 = center + v * tmax
-        return (p1[0], p1[1], p2[0], p2[1])
+        # Solve: edge_start + edge_fraction * edge_direction = centroid + axis_distance * major_direction
+        system = np.column_stack((edge_direction, -major_direction))
+        determinant = np.linalg.det(system)
 
-    # Fallback: use extreme projected vertices (guaranteed on boundary)
-    proj_t = (pts - center) @ v
-    tmin = proj_t.min()
-    tmax = proj_t.max()
-    p1 = center + v * tmin
-    p2 = center + v * tmax
-    return (p1[0], p1[1], p2[0], p2[1])
+        # Parallel lines have no unique intersection.
+        if abs(determinant) < 1e-12:
+            continue
+
+        try:
+            edge_fraction, axis_distance = np.linalg.solve(system, centroid - edge_start)
+        except np.linalg.LinAlgError:
+            continue
+
+        # The intersection must lie on the finite polygon edge.
+        if edge_fraction < -1e-9 or edge_fraction > 1.0 + 1e-9:
+            continue
+
+        intersection = centroid + axis_distance * major_direction
+
+        # A polygon vertex may be found from both adjacent edges.
+        if not any(np.allclose(intersection, existing, atol=1e-8) for existing in intersections):
+            intersections.append(intersection)
+
+    if len(intersections) >= 2:
+        intersections = np.asarray(intersections)
+
+        # Select the two boundary intersections furthest apart along the axis.
+        axis_positions = (intersections - centroid) @ major_direction
+        first_endpoint = intersections[np.argmin(axis_positions)]
+        second_endpoint = intersections[np.argmax(axis_positions)]
+
+        return first_endpoint[0], first_endpoint[1], second_endpoint[0], second_endpoint[1]
+
+    # Project the polygon vertices onto the axis as a fallback.
+    axis_positions = centered_vertices @ major_direction
+    minimum_distance = np.min(axis_positions)
+    maximum_distance = np.max(axis_positions)
+
+    first_endpoint = centroid + minimum_distance * major_direction
+    second_endpoint = centroid + maximum_distance * major_direction
+
+    return first_endpoint[0], first_endpoint[1], second_endpoint[0], second_endpoint[1]
 
 
 def major_axes_animation(state_files, params):
+    """
+    Animate Voronoi cells with their major axes overlaid.
+
+    Args:
+        state_files: Ordered collection of saved simulation states.
+        params: Static simulation parameters.
+
+    Returns:
+        Matplotlib animation of tissue geometry and cell major axes.
+    """
     initial_data = load_state(state_files[0])
 
     cell_points = initial_data["cell_points"]
@@ -440,6 +606,16 @@ def major_axes_animation(state_files, params):
 
 
 def boundary_animation(state_files, params):
+    """
+    Animate tissue geometry with the ordered boundary cycle highlighted.
+
+    Args:
+        state_files: Ordered collection of saved simulation states.
+        params: Static simulation parameters.
+
+    Returns:
+        Matplotlib animation of the tissue and boundary cycle.
+    """
     initial_data = load_state(state_files[0])
 
     cell_points = initial_data["cell_points"]
@@ -494,6 +670,16 @@ def boundary_animation(state_files, params):
 
 
 def force_vectors_animation(state_files, params):
+    """
+    Animate cell forces as vectors over the Voronoi tissue.
+
+    Args:
+        state_files: Ordered collection of saved simulation states.
+        params: Static simulation parameters.
+
+    Returns:
+        Matplotlib animation of tissue geometry and cell force vectors.
+    """
     initial_data = load_state(state_files[0])
 
     cell_points = initial_data["cell_points"]
@@ -567,6 +753,17 @@ def force_vectors_animation(state_files, params):
 
 
 def force_field_animation(state_files, params, grid_size=50):
+    """
+    Animate an interpolated force field over the Voronoi tissue.
+
+    Args:
+        state_files: Ordered collection of saved simulation states.
+        params: Static simulation parameters.
+        grid_size: Number of interpolation points along each grid dimension.
+
+    Returns:
+        Matplotlib animation of the interpolated tissue force field.
+    """
     initial_data = load_state(state_files[0])
 
     x_min, x_max, y_min, y_max = get_plot_limits(state_files)
@@ -636,6 +833,16 @@ def force_field_animation(state_files, params, grid_size=50):
 
 
 def area_strain_animation(state_files, params):
+    """
+    Animate Voronoi cells coloured by relative area strain.
+
+    Args:
+        state_files: Ordered collection of saved simulation states.
+        params: Static simulation parameters.
+
+    Returns:
+        Matplotlib animation of cell area strain.
+    """
     initial_data = load_state(state_files[0])
 
     cell_points = initial_data["cell_points"]

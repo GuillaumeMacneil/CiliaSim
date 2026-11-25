@@ -9,6 +9,7 @@ from pathlib import Path
 from ciliasim import initialisation, geometry, boundary, connectivity
 
 class Tissue():
+    """Represent and simulate a two-dimensional Voronoi tissue."""
     def __init__(
             self, 
             x: int, 
@@ -28,6 +29,30 @@ class Tissue():
             save_freq: int = 10,
             output_dir: str = ""
             ):
+        """
+        Initialize the tissue geometry, mechanics, and simulation state.
+
+        Args:
+            x: Width of the initial tissue domain.
+            y: Height of the initial tissue domain.
+            density: Target fraction of multiciliated cells.
+            spring_length: Preferred distance between neighbouring cell centres.
+            spring_constant: Stiffness of centre-to-centre springs.
+            area_constant: Strength of the cell area energy.
+            perimeter_constant: Strength of the cell perimeter energy.
+            oversize_factor: Storage multiplier allowing additional boundary cells.
+            max_degree: Maximum number of neighbours and incident triangles per cell.
+            center_only: Whether to create only one central multiciliated cell.
+            random_layout: Whether to use a random rather than hexagonal layout.
+            mobility: Cell mobility used to convert force into velocity.
+            dt: Simulation timestep.
+            save: Whether to save simulation states.
+            save_freq: Number of iterations between saved states.
+            output_dir: Directory in which simulation output is stored.
+
+        Returns:
+            None.
+        """
         # Dimension and layout parameters
         self.x = x
         self.y = y
@@ -97,6 +122,16 @@ class Tissue():
         self.flow_force = np.zeros(2, dtype=np.float32)
 
     def specify_cells(self, area_distribution: tuple[float, float]):
+        """
+        Construct the boundary and assign cell types and target areas.
+
+        Args:
+            area_distribution: Mean and standard deviation of target cell areas.
+                A zero standard deviation produces uniform target areas.
+
+        Returns:
+            None.
+        """
         # Determine the boundary cycle and specify the individual cell types
         self.cell_types[:self.num_cells] = 0
 
@@ -160,25 +195,64 @@ class Tissue():
         if area_distribution[1] == 0:
             self.target_areas = initialisation.uniform_target_areas(self.cell_types, area_distribution[0])
         else:
-            self.target_areas = initialisation.normal_random_target_areas(self.cell_types, self.num_cells, area_distribution[0], area_distribution[1])
+            self.target_areas = initialisation.normal_random_target_areas(self.cell_types, area_distribution[0], area_distribution[1])
 
     def set_uniform_ciliary_forces(self, direction: np.ndarray, magnitude: float):
+        """
+        Assign the same ciliary force to every multiciliated cell.
+
+        Args:
+            direction: Direction vector of the applied ciliary force.
+            magnitude: Scalar multiplier applied to the direction vector.
+
+        Returns:
+            None.
+        """
         force = direction * magnitude
         multiciliated_cells = np.where(self.cell_types == 2)[0]
         self.cilia_forces[multiciliated_cells] = force
 
     def set_random_ciliary_forces(self, magnitude: float):
+        """
+        Assign randomly oriented ciliary forces to multiciliated cells.
+
+        Args:
+            magnitude: Magnitude of each ciliary force.
+
+        Returns:
+            None.
+        """
         multiciliated_cells = np.where(self.cell_types == 2)[0]
         non_unit_directions = np.random.uniform(-1, 1, [len(multiciliated_cells), 2])
         unit_directions = non_unit_directions / np.linalg.norm(non_unit_directions, axis=1, keepdims=True)
         self.cilia_forces[multiciliated_cells] = unit_directions * magnitude
 
     def set_flow_force(self, direction: np.ndarray, magnitude: float):
+        """
+        Set the global flow force applied to multiciliated cells.
+
+        Args:
+            direction: Direction vector of the flow force.
+            magnitude: Scalar multiplier applied to the direction vector.
+
+        Returns:
+            None.
+        """
         self.flow_force = direction * magnitude
 
     def evaluate_boundary(self):
+        """
+        Adapt the ghost-cell boundary and rebuild tissue connectivity.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        """
         max_iterations = 20
 
+        # Repeatedly add and remove ghost cells until the boundary stabilizes.
         for _ in range(max_iterations):
             prev_num_cells = self.num_cells
 
@@ -190,9 +264,11 @@ class Tissue():
             if not changed:
                 break
 
+            # Compact active cells into the leading rows required by full_update().
             empty_mask = np.all(self.cell_points == -1, axis=1)
             new_order = np.concatenate([np.nonzero(~empty_mask)[0], np.nonzero(empty_mask)[0]])
 
+            # Remap the boundary indices to the compacted cell ordering.
             inverse_order = np.empty_like(new_order)
             inverse_order[new_order] = np.arange(len(new_order))
             self.boundary_cycle = inverse_order[self.boundary_cycle]
@@ -213,6 +289,15 @@ class Tissue():
         boundary.constrain_to_cycle(self.adjacency, self.boundary_cycle, self.boundary_cycle_mask, self.max_degree)
 
     def simulate(self, iterations: int):
+        """
+        Advance the tissue through a specified number of simulation iterations.
+
+        Args:
+            iterations: Number of timesteps to simulate.
+
+        Returns:
+            None.
+        """
         progress = tqdm(range(iterations))
 
         for _ in progress:
@@ -297,6 +382,24 @@ class Tissue():
 
 
 def calculate_energy(cell_points, cell_types, target_areas, triangles, cell_triangles, adjacency, spring_length, spring_constant, area_constant, perimeter_constant):
+    """
+    Calculate the total mechanical energy of the tissue.
+
+    Args:
+        cell_points: Positions of all cell centres.
+        cell_types: Cell type array.
+        target_areas: Preferred area of each cell.
+        triangles: Padded Delaunay triangle array.
+        cell_triangles: Ordered incident-triangle indices for each cell.
+        adjacency: Padded cell adjacency array.
+        spring_length: Preferred distance between neighbouring cell centres.
+        spring_constant: Strength of the spring energy.
+        area_constant: Strength of the area energy.
+        perimeter_constant: Strength of the perimeter energy.
+
+    Returns:
+        Total spring, area, and perimeter energy of the tissue.
+    """
     valid_neighbours = adjacency != -1
     safe_adjacency = jnp.where(valid_neighbours, adjacency, 0)
 
@@ -326,10 +429,23 @@ def calculate_energy(cell_points, cell_types, target_areas, triangles, cell_tria
     return spring_energy + area_energy + perimeter_energy
 
 
+# Differentiate total energy with respect to cell-centre positions.
 calculate_forces = jax.jit(jax.grad(calculate_energy, argnums=0))
 
 
 def generate_filename(x: int, y: int, center_only: bool, random_layout: bool):
+    """
+    Generate a timestamped directory name describing a simulation.
+
+    Args:
+        x: Width of the initial tissue domain.
+        y: Height of the initial tissue domain.
+        center_only: Whether the tissue contains only one central MCC.
+        random_layout: Whether the tissue uses a random initial layout.
+
+    Returns:
+        Timestamped simulation name containing the main layout parameters.
+    """
     timestamp = datetime.now().strftime("%d-%m-%y_%H-%M-%S")
     center_string = "_center" if center_only else ""
     layout_string = "random" if random_layout else "hexagonal"

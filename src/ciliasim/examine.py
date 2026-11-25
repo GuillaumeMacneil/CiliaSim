@@ -6,18 +6,40 @@ from datetime import datetime
 from ciliasim import plotting
 
 class Examine():
+    """Load and visualize the saved states of a simulation."""
+
     def __init__(self, simulation_dir: str, output_dir: str = ""):
-        # Set up the paths to read from and output to
+        """
+        Initialize an interface for examining a saved simulation.
+
+        Args:
+            simulation_dir: Directory containing simulation states and parameters.
+            output_dir: Optional directory in which generated outputs are saved.
+
+        Returns:
+            None.
+        """
         self.simulation_dir = Path(simulation_dir)
+        self.output_path = None
         if output_dir:
             self.output_path = Path(output_dir) / self.simulation_dir.name 
             self.output_path.mkdir(parents=True, exist_ok=True)
 
-        # Load the static parameters
         with open(self.simulation_dir / "params.json", "r") as params_file:
             self.params = json.load(params_file)
 
     def animate(self, plot_type: str = "basic", show: bool = True, save: bool = False):
+        """
+        Create an animation from the saved simulation states.
+
+        Args:
+            plot_type: Type of simulation visualization to generate.
+            show: Whether to display the animation interactively.
+            save: Whether to save the animation as an MP4 file.
+
+        Returns:
+            None.
+        """
         # Choose a plot type and animate the simulation
         animate = plotting.basic_animation
         match plot_type:

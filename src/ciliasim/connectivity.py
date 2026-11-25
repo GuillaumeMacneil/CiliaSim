@@ -3,6 +3,21 @@ from scipy.spatial import Delaunay
 
 
 def full_update(num_cells: int, max_cells: int, max_degree: int, max_triangles: int, cell_points: np.ndarray, boundary_cycle: np.ndarray | None = None, boundary_cycle_mask: np.ndarray | None = None):
+    """
+    Recompute the complete Delaunay triangulation and cell connectivity.
+
+    Args:
+        num_cells: Number of active cells.
+        max_cells: Maximum number of cells supported.
+        max_degree: Maximum number of neighbours and incident triangles per cell.
+        max_triangles: Maximum number of triangles supported.
+        cell_points: Cell positions, with active cells occupying the first num_cells rows.
+        boundary_cycle: Optional ordered indices of boundary cells.
+        boundary_cycle_mask: Optional mask identifying boundary cells.
+
+    Returns:
+        Cell adjacency, triangle array, and ordered incident triangles for each cell.
+    """
     delaunay = Delaunay(cell_points[:num_cells])
     simplices = np.sort(delaunay.simplices, axis=1)
 
@@ -13,6 +28,17 @@ def full_update(num_cells: int, max_cells: int, max_degree: int, max_triangles: 
 
 
 def filter_boundary_triangles(simplices: np.ndarray, boundary_cycle: np.ndarray, boundary_cycle_mask: np.ndarray):
+    """
+    Remove triangles containing connections between non-consecutive boundary cells.
+
+    Args:
+        simplices: Delaunay triangles as cell-index triplets.
+        boundary_cycle: Ordered indices of boundary cells.
+        boundary_cycle_mask: Mask identifying boundary cells.
+
+    Returns:
+        Triangles consistent with the prescribed boundary cycle.
+    """
     allowed_edges = set()
 
     for i, a in enumerate(boundary_cycle):
@@ -44,6 +70,20 @@ def filter_boundary_triangles(simplices: np.ndarray, boundary_cycle: np.ndarray,
 
 
 def build_connectivity(simplices: np.ndarray, num_cells: int, max_cells: int, max_degree: int, max_triangles: int, cell_points: np.ndarray):
+    """
+    Construct adjacency and incident-triangle arrays from a triangulation.
+
+    Args:
+        simplices: Triangles as cell-index triplets.
+        num_cells: Number of active cells.
+        max_cells: Maximum number of cells supported.
+        max_degree: Maximum number of neighbours and incident triangles per cell.
+        max_triangles: Maximum number of triangles supported.
+        cell_points: Cell positions used to order incident triangles.
+
+    Returns:
+        Cell adjacency, padded triangle array, and ordered incident triangles for each cell.
+    """
     adjacency = np.full((max_cells, max_degree), -1, dtype=np.int32)
     triangles = np.full((max_triangles, 3), -1, dtype=np.int32)
     cell_triangles = np.full((max_cells, max_degree), -1, dtype=np.int32)
@@ -70,6 +110,7 @@ def build_connectivity(simplices: np.ndarray, num_cells: int, max_cells: int, ma
             cell_triangles[cell, triangle_counts[cell]] = triangle_index
             triangle_counts[cell] += 1
 
+    # Order incident triangles cyclically so their circumcenters form an ordered Voronoi polygon.
     for cell in range(num_cells):
         count = triangle_counts[cell]
 
@@ -88,6 +129,18 @@ def build_connectivity(simplices: np.ndarray, num_cells: int, max_cells: int, ma
 
 
 def add_neighbour(indices: np.ndarray, adjacency: np.ndarray, a: int, b: int):
+    """
+    Add a symmetric neighbour relationship between two cells.
+
+    Args:
+        indices: Current neighbour count for each cell, modified in place.
+        adjacency: Padded cell adjacency array, modified in place.
+        a: Index of the first cell.
+        b: Index of the second cell.
+
+    Returns:
+        None.
+    """
     if not np.any(adjacency[a, :indices[a]] == b):
         if indices[a] >= adjacency.shape[1]:
             raise RuntimeError(f"Cell {a} exceeds maximum degree {adjacency.shape[1]}.")

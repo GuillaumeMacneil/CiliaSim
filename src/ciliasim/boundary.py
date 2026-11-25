@@ -2,6 +2,18 @@ import numpy as np
 from scipy.spatial import ConvexHull
 
 def create_boundary(cell_points: np.ndarray, num_cells: int, max_cells: int, spring_length: float):
+    """
+    Create a ghost-cell boundary around the convex hull of the tissue.
+
+    Args:
+        cell_points: Cell positions, including vacant slots.
+        num_cells: Number of active cells before boundary creation.
+        max_cells: Maximum number of cells supported.
+        spring_length: Preferred spacing used for boundary offset and sampling.
+
+    Returns:
+        Boundary mask, ordered boundary cycle, and updated active cell count.
+    """
     real_points = cell_points[:num_cells]
 
     hull = ConvexHull(real_points)
@@ -53,6 +65,18 @@ def create_boundary(cell_points: np.ndarray, num_cells: int, max_cells: int, spr
 
 
 def create_hexagonal_boundary(cell_points: np.ndarray, num_cells: int, max_cells: int, spring_length: float):
+    """
+    Create the next axial lattice ring around a complete hexagonal tissue.
+
+    Args:
+        cell_points: Cell positions, including vacant slots.
+        num_cells: Number of active cells in the hexagonal lattice.
+        max_cells: Maximum number of cells supported.
+        spring_length: Nearest-neighbour spacing of the lattice.
+
+    Returns:
+        Boundary mask, ordered boundary cycle, and updated active cell count.
+    """
     num_rings = int(round((-3 + np.sqrt(12 * num_cells - 3)) / 6))
 
     if 1 + 3 * num_rings * (num_rings + 1) != num_cells:
@@ -98,6 +122,18 @@ def create_hexagonal_boundary(cell_points: np.ndarray, num_cells: int, max_cells
 
 
 def constrain_to_cycle(adjacency: np.ndarray, boundary_cycle: np.ndarray, boundary_cycle_mask: np.ndarray, max_degree: int):
+    """
+    Restrict boundary connectivity to consecutive cycle cells and interior neighbours.
+
+    Args:
+        adjacency: Cell adjacency array, modified in place.
+        boundary_cycle: Ordered indices of boundary cells.
+        boundary_cycle_mask: Mask identifying boundary cells.
+        max_degree: Maximum number of neighbours per cell.
+
+    Returns:
+        None.
+    """
     boundary_len = len(boundary_cycle)
 
     if boundary_len < 3:
@@ -124,6 +160,20 @@ def constrain_to_cycle(adjacency: np.ndarray, boundary_cycle: np.ndarray, bounda
 
 
 def add_additional_boundary_cells(adjacency: np.ndarray, boundary_cycle: np.ndarray, boundary_cycle_mask: np.ndarray, cell_points: np.ndarray, cell_types: np.ndarray, target_areas: np.ndarray):
+    """
+    Add ghost cells where the current boundary insufficiently encloses the tissue.
+
+    Args:
+        adjacency: Current cell adjacency array.
+        boundary_cycle: Ordered indices of boundary cells.
+        boundary_cycle_mask: Mask identifying boundary cells, modified in place.
+        cell_points: Cell positions, modified in place.
+        cell_types: Cell type array, modified in place.
+        target_areas: Cell target areas, modified in place.
+
+    Returns:
+        Updated active cell count and boundary cycle.
+    """
     additions = []
 
     for i, a_index in enumerate(boundary_cycle):
@@ -203,6 +253,20 @@ def add_additional_boundary_cells(adjacency: np.ndarray, boundary_cycle: np.ndar
 
 
 def remove_excessive_boundary_cells(adjacency: np.ndarray, boundary_cycle: np.ndarray, boundary_cycle_mask: np.ndarray, cell_points: np.ndarray, cell_types: np.ndarray, target_areas: np.ndarray):
+    """
+    Remove redundant ghost cells from the current boundary cycle.
+
+    Args:
+        adjacency: Current cell adjacency array.
+        boundary_cycle: Ordered indices of boundary cells.
+        boundary_cycle_mask: Mask identifying boundary cells, modified in place.
+        cell_points: Cell positions, modified in place.
+        cell_types: Cell type array, modified in place.
+        target_areas: Cell target areas, modified in place.
+
+    Returns:
+        Updated active cell count and boundary cycle.
+    """
     remove_cells = []
 
     for i, current in enumerate(boundary_cycle):
