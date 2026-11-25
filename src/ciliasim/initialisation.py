@@ -45,7 +45,7 @@ def hexagonal_layout(x: int, y: int, num_cells: int, max_cells: int):
 
 
 def uniform_target_areas(cell_types: np.ndarray, target_area: float) -> np.ndarray:
-    target_areas = np.full_like(cell_types, target_area)
+    target_areas = np.full(cell_types.shape, target_area, dtype=np.float32)
     target_areas[np.where(cell_types == 1)[0]] = 0
     target_areas[np.where(cell_types == -1)[0]] = -1
 
