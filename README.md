@@ -64,11 +64,11 @@ simulation.simulate(2000)
 
 `specify_cells()` takes a `(mean, standard_deviation)` target-area distribution. A standard deviation of zero assigns a uniform target area.
 
-For a regular triangular lattice with nearest-neighbour spacing \(l_0\), the corresponding regular hexagonal Voronoi area is
+For a regular triangular lattice with nearest-neighbour spacing $l_0$, the corresponding regular hexagonal Voronoi area is:
 
-\[
-A_0 = \frac{\sqrt{3}}{2}l_0^2.
-\]
+```math
+A_0 = \frac{\sqrt{3}}{2}l_0^2
+```
 
 ## Tissue initialization
 
@@ -91,7 +91,7 @@ A ghost-cell boundary is constructed outside the convex hull of the real tissue.
 The simulation uses integer cell types:
 
 | Value | Cell type |
-|---:|---|
+| ---: | --- |
 | `-1` | Vacant storage slot |
 | `0` | Non-multiciliated tissue cell |
 | `1` | Ghost boundary cell |
@@ -119,35 +119,42 @@ Boundary cells are constrained to an ordered cycle to prevent unwanted Delaunay 
 
 The current tissue energy contains three contributions:
 
-\[
-E = E_{\mathrm{spring}} + E_{\mathrm{area}} + E_{\mathrm{perimeter}}.
-\]
+```math
+E =
+E_{\mathrm{spring}}
++
+E_{\mathrm{area}}
++
+E_{\mathrm{perimeter}}
+```
 
 ### Spring energy
 
-Neighbouring cell centres are connected by springs with preferred length \(l_0\):
+Neighbouring cell centres are connected by springs with preferred length $l_0$:
 
-\[
+```math
 E_{\mathrm{spring}}
 =
 \frac{k_s}{2}
 \sum_{\langle i,j\rangle}
-(d_{ij}-l_0)^2.
-\]
+\left(d_{ij}-l_0\right)^2
+```
+
+where $d_{ij}$ is the distance between neighbouring cell centres $i$ and $j$.
 
 This penalizes deviations from the preferred centre-to-centre separation.
 
 ### Area energy
 
-Real cells have a preferred area \(A_i^0\):
+Real cells have a preferred area $A_i^0$:
 
-\[
+```math
 E_{\mathrm{area}}
 =
 \frac{k_A}{2}
 \sum_i
-(A_i-A_i^0)^2.
-\]
+\left(A_i-A_i^0\right)^2
+```
 
 Ghost boundary cells do not contribute to the area energy.
 
@@ -155,39 +162,41 @@ Ghost boundary cells do not contribute to the area energy.
 
 Cells additionally have a preferred perimeter:
 
-\[
+```math
 E_{\mathrm{perimeter}}
 =
 \frac{k_P}{2}
 \sum_i
-(P_i-P_0)^2.
-\]
+\left(P_i-P_0\right)^2
+```
 
 The current preferred perimeter corresponds to a regular hexagonal Voronoi cell at the preferred spring spacing:
 
-\[
-P_0 = 2\sqrt{3}\,l_0.
-\]
+```math
+P_0 = 2\sqrt{3}\,l_0
+```
 
-For \(l_0=1\), the compatible regular-lattice geometry is therefore
+For $l_0=1$, the compatible regular-lattice geometry is therefore:
 
-\[
-A_0=\frac{\sqrt{3}}{2},
+```math
+A_0 = \frac{\sqrt{3}}{2},
 \qquad
-P_0=2\sqrt{3}.
-\]
+P_0 = 2\sqrt{3}
+```
+
+Thus the spring, area, and perimeter terms share the same preferred geometry for a regular hexagonal tissue.
 
 ## Forces and dynamics
 
-Internal mechanical forces are calculated directly from the energy gradient using JAX:
+Internal mechanical forces are calculated from the negative gradient of the mechanical energy with respect to cell-centre position:
 
-\[
-\mathbf F_i^{\mathrm{internal}}
+```math
+\mathbf{F}_i^{\mathrm{internal}}
 =
--\nabla_{\mathbf r_i} E.
-\]
+-\nabla_{\mathbf{r}_i}E
+```
 
-The gradient is JIT-compiled for repeated simulation steps.
+The gradient is calculated automatically using JAX and JIT-compiled for repeated simulation steps.
 
 Ciliary forces can be assigned uniformly:
 
@@ -215,39 +224,40 @@ simulation.set_flow_force(
 )
 ```
 
-The total force is
+The total force acting on a cell is:
 
-\[
-\mathbf F_i =
-\mathbf F_i^{\mathrm{internal}}
+```math
+\mathbf{F}_i
+=
+\mathbf{F}_i^{\mathrm{internal}}
 +
-\mathbf F_i^{\mathrm{cilia}}
+\mathbf{F}_i^{\mathrm{cilia}}
 +
-\mathbf F_i^{\mathrm{flow}},
-\]
+\mathbf{F}_i^{\mathrm{flow}}
+```
 
-where the flow contribution is applied to multiciliated cells.
+The flow contribution is applied only to multiciliated cells.
 
 The simulation uses overdamped dynamics:
 
-\[
-\Delta \mathbf r_i
+```math
+\Delta\mathbf{r}_i
 =
-\mu\,\mathbf F_i\,\Delta t,
-\]
+\mu\,\mathbf{F}_i\,\Delta t
+```
 
-where \(\mu\) is the mobility and \(\Delta t\) is the simulation timestep.
+where $\mu$ is the cell mobility and $\Delta t$ is the simulation timestep.
 
 ## Boundary handling
 
 Ghost cells surround the real tissue so that peripheral cells retain closed Voronoi regions.
 
-The boundary is represented by both:
+The boundary is represented by:
 
 - `boundary_cycle`, an ordered sequence of ghost-cell indices;
 - `boundary_cycle_mask`, a Boolean mask identifying boundary cells.
 
-During simulation, the boundary is evaluated after cell movement. Ghost cells may be added or removed where necessary, after which the active cell arrays are compacted and the Delaunay connectivity is recomputed.
+During simulation, the boundary is evaluated after cell movement. Ghost cells may be added or removed where necessary, after which active cell arrays are compacted and the Delaunay connectivity is recomputed.
 
 Boundary connectivity is constrained so that a ghost cell can connect to its two adjacent boundary cells and to interior cells, but not arbitrarily to other boundary cells.
 
@@ -302,12 +312,12 @@ simulation.animate(
 )
 ```
 
-Available animation types currently include:
+Available animation types include:
 
 | Plot type | Description |
-|---|---|
+| --- | --- |
 | `basic` | Voronoi tissue geometry |
-| `spring` | Centre-to-centre springs coloured by compression/extension |
+| `spring` | Springs coloured by compression and extension |
 | `major-axes` | Major axes of Voronoi cell polygons |
 | `boundary` | Explicit ghost-cell boundary cycle |
 | `force-vectors` | Cell force vectors |
@@ -320,7 +330,7 @@ Animations can be saved as MP4 files using FFmpeg.
 
 ## Project structure
 
-The core package is organized approximately as:
+The core package is organized as:
 
 ```text
 src/ciliasim/
@@ -359,19 +369,19 @@ Contains geometry, force, strain, spring, boundary, and cell-shape animations.
 
 ### `examine.py`
 
-Provides a simple interface for loading, displaying, and exporting saved simulations.
+Provides an interface for loading, displaying, and exporting saved simulations.
 
 ## Current limitations
 
-The model uses an ordinary Voronoi tessellation in which cell boundaries are determined entirely by cell-centre positions. Consequently, motion of a Voronoi generator does not necessarily correspond to deformation of a material cell in the intuitive way expected from an explicit membrane model.
+The model uses an ordinary Voronoi tessellation in which cell boundaries are determined entirely by cell-centre positions. Consequently, motion of a Voronoi generator does not necessarily correspond to deformation of a material cell in the same way as an explicit membrane model.
 
 In particular, strongly forced cells can exhibit unintuitive elongation because translating a generator also moves its Voronoi interfaces.
 
-The current implementation also performs complete Delaunay retriangulation when updating tissue connectivity. Partial/local retriangulation is not yet implemented.
+The current implementation also performs complete Delaunay retriangulation when updating tissue connectivity. Partial or local retriangulation is not yet implemented.
 
-Potential future extensions include weighted Voronoi/power diagrams, improved local topology updates, and more detailed models of cell deformation and active stress.
+Potential future extensions include weighted Voronoi or power diagrams, improved local topology updates, and more detailed models of cell deformation and active stress.
 
-## Requirements
+## Dependencies
 
 Major dependencies include:
 
@@ -381,17 +391,17 @@ Major dependencies include:
 - Matplotlib
 - tqdm
 
-The exact dependency versions are recorded in `uv.lock`.
+Exact dependency versions are recorded in `uv.lock`.
 
 ## Development
 
-Install the locked development environment with:
+Install the locked environment with:
 
 ```bash
 uv sync
 ```
 
-Run code within the environment using:
+Run commands within the environment using:
 
 ```bash
 uv run <command>
