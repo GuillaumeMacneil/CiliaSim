@@ -266,10 +266,11 @@ class Tissue():
 
             internal_force = np.asarray(internal_force)
 
+            # External forces
             total_force = internal_force + self.cilia_forces
             multiciliated_mask = self.cell_types == 2
             total_force[multiciliated_mask] += self.flow_force
-
+            
             real_mask = (self.cell_types[:self.num_cells] != 1) & (self.cell_types[:self.num_cells] != -1)
             force_magnitudes = np.linalg.norm(internal_force[:self.num_cells][real_mask], axis=1)
 

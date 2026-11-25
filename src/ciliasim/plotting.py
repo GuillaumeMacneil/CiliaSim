@@ -94,7 +94,6 @@ def basic_animation(state_files, params):
 
 
 def spring_animation(state_files, params):
-    # Load the initial points and set up the plot
     initial_data = np.load(state_files[0])
     cell_points = initial_data["cell_points"]
     circumcenters = initial_data["circumcenters"]
@@ -102,15 +101,15 @@ def spring_animation(state_files, params):
     cell_types = initial_data["cell_types"]
     adjacency = initial_data["adjacency"]
     num_cells = np.sum(cell_types != -1)
+    spring_length = params["spring_length"]
+    spring_constant = params["spring_constant"]
     polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
 
-    # Set up plot configuration
     fig, ax = plt.subplots()
     ax.set_aspect("equal")
     ax.set_xlim(np.min(cell_points[:, 0]) - 1, np.max(cell_points[:, 0]) + 1)
-    ax.set_ylim(np.min(cell_points[:, 1]) - 1, np.max(cell_points[:, 1]) + 1)   
-    
-    # Draw cell polygon patches
+    ax.set_ylim(np.min(cell_points[:, 1]) - 1, np.max(cell_points[:, 1]) + 1)
+
     patches = [None] * num_cells
     for i in range(num_cells):
         polygon = polygons[i]
@@ -118,37 +117,46 @@ def spring_animation(state_files, params):
             continue
 
         colour = "orange" if cell_types[i] == 2 else "lightgray"
-        patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor='black', linewidth=0.5)
+        patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor="black", linewidth=0.5)
         ax.add_patch(patch)
         patches[i] = patch
 
-    # Draw boundary points
     boundary_mask = cell_types == 1
     boundary_points = cell_points[boundary_mask]
     boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
 
-    # Draw springs using triangle data
     springs = []
+    spring_forces = []
+
     for triangle in triangles:
         if np.any(triangle == -1):
             continue
 
         a, b, c = triangle
-        spring_pairs = []
-        if b in adjacency[a]:
-            spring_pairs.append([cell_points[a], cell_points[b]])
-        if c in adjacency[b]:
-            spring_pairs.append([cell_points[b], cell_points[c]])
-        if a in adjacency[c]:
-            spring_pairs.append([cell_points[c], cell_points[a]])
 
-        springs.extend(spring_pairs)
-    
-    springs_line_collection = LineCollection(springs, colors="gray", linewidths=0.5)
+        for i, j in ((a, b), (b, c), (c, a)):
+            if j not in adjacency[i]:
+                continue
+
+            springs.append([cell_points[i], cell_points[j]])
+
+            distance = np.linalg.norm(cell_points[j] - cell_points[i])
+            spring_force = spring_constant * (distance - spring_length)
+            spring_forces.append(spring_force)
+
+    spring_forces = np.asarray(spring_forces)
+
+    max_force = max(np.max(np.abs(spring_forces)), 1e-12)
+    norm = plt.Normalize(-max_force, max_force)
+
+    springs_line_collection = LineCollection(springs, cmap="viridis", norm=norm, linewidths=1.0)
+    springs_line_collection.set_array(spring_forces)
     ax.add_collection(springs_line_collection)
 
+    colorbar = fig.colorbar(springs_line_collection, ax=ax)
+    colorbar.set_label("Spring force")
+
     def update(frame):
-        # Load the data required for a basic voronoi plot
         data = np.load(state_files[frame])
         cell_points = data["cell_points"]
         circumcenters = data["circumcenters"]
@@ -157,54 +165,58 @@ def spring_animation(state_files, params):
         adjacency = data["adjacency"]
         num_cells = np.sum(cell_types != -1)
 
-        # Clear old patches
-        for p in patches:
-            if p is not None:
-                p.remove()
+        for patch in patches:
+            if patch is not None:
+                patch.remove()
+
         patches.clear()
 
-        # Rebuild new patches
         polygons = get_voronoi_polygons(cell_points, cell_types, circumcenters, triangles, num_cells)
+
         for i in range(num_cells):
             polygon = polygons[i]
+
             if cell_types[i] == 1 or len(polygon) == 0:
                 patches.append(None)
                 continue
 
             colour = "orange" if cell_types[i] == 2 else "lightgray"
-            patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor='black', linewidth=0.5)
+            patch = Polygon(polygon, closed=True, facecolor=colour, edgecolor="black", linewidth=0.5)
             ax.add_patch(patch)
             patches.append(patch)
 
-        # Update boundary points
         boundary_mask = cell_types == 1
         boundary_points = cell_points[boundary_mask]
         boundary_scatter.set_offsets(boundary_points)
 
-        # Update springs using triangle data
         springs = []
+        spring_forces = []
+
         for triangle in triangles:
             if np.any(triangle == -1):
                 continue
 
             a, b, c = triangle
-            spring_pairs = []
-            if b in adjacency[a]:
-                spring_pairs.append([cell_points[a], cell_points[b]])
-            if c in adjacency[b]:
-                spring_pairs.append([cell_points[b], cell_points[c]])
-            if a in adjacency[c]:
-                spring_pairs.append([cell_points[c], cell_points[a]])
 
-            springs.extend(spring_pairs)
+            for i, j in ((a, b), (b, c), (c, a)):
+                if j not in adjacency[i]:
+                    continue
+
+                springs.append([cell_points[i], cell_points[j]])
+
+                distance = np.linalg.norm(cell_points[j] - cell_points[i])
+                spring_force = spring_constant * (distance - spring_length)
+                spring_forces.append(spring_force)
+
+        spring_forces = np.asarray(spring_forces)
 
         springs_line_collection.set_segments(springs)
+        springs_line_collection.set_array(spring_forces)
 
         artists = [patch for patch in patches if patch is not None]
         return artists + [boundary_scatter, springs_line_collection]
-       
-    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
+    return FuncAnimation(fig, update, frames=len(state_files), interval=100, blit=True)
 
 def compute_major_axis(polygon):
     pts = np.asarray(polygon, dtype=np.float64)

@@ -1,6 +1,5 @@
 import jax.numpy as jnp
 
-
 def calculate_circumcenters(cell_points, triangles):
     valid = jnp.all(triangles != -1, axis=1)
     safe_triangles = jnp.where(valid[:, None], triangles, 0)
