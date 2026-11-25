@@ -2,7 +2,15 @@ import numpy as np
 from scipy.spatial import Delaunay
 
 
-def full_update(num_cells: int, max_cells: int, max_degree: int, max_triangles: int, cell_points: np.ndarray, boundary_cycle: np.ndarray | None = None, boundary_cycle_mask: np.ndarray | None = None):
+def full_update(
+    num_cells: int,
+    max_cells: int,
+    max_degree: int,
+    max_triangles: int,
+    cell_points: np.ndarray,
+    boundary_cycle: np.ndarray | None = None,
+    boundary_cycle_mask: np.ndarray | None = None,
+):
     """
     Recompute the complete Delaunay triangulation and cell connectivity.
 
@@ -22,12 +30,18 @@ def full_update(num_cells: int, max_cells: int, max_degree: int, max_triangles: 
     simplices = np.sort(delaunay.simplices, axis=1)
 
     if boundary_cycle is not None and boundary_cycle_mask is not None:
-        simplices = filter_boundary_triangles(simplices, boundary_cycle, boundary_cycle_mask)
+        simplices = filter_boundary_triangles(
+            simplices, boundary_cycle, boundary_cycle_mask
+        )
 
-    return build_connectivity(simplices, num_cells, max_cells, max_degree, max_triangles, cell_points)
+    return build_connectivity(
+        simplices, num_cells, max_cells, max_degree, max_triangles, cell_points
+    )
 
 
-def filter_boundary_triangles(simplices: np.ndarray, boundary_cycle: np.ndarray, boundary_cycle_mask: np.ndarray):
+def filter_boundary_triangles(
+    simplices: np.ndarray, boundary_cycle: np.ndarray, boundary_cycle_mask: np.ndarray
+):
     """
     Remove triangles containing connections between non-consecutive boundary cells.
 
@@ -69,7 +83,14 @@ def filter_boundary_triangles(simplices: np.ndarray, boundary_cycle: np.ndarray,
     return simplices[keep]
 
 
-def build_connectivity(simplices: np.ndarray, num_cells: int, max_cells: int, max_degree: int, max_triangles: int, cell_points: np.ndarray):
+def build_connectivity(
+    simplices: np.ndarray,
+    num_cells: int,
+    max_cells: int,
+    max_degree: int,
+    max_triangles: int,
+    cell_points: np.ndarray,
+):
     """
     Construct adjacency and incident-triangle arrays from a triangulation.
 
@@ -92,7 +113,9 @@ def build_connectivity(simplices: np.ndarray, num_cells: int, max_cells: int, ma
     triangle_counts = np.zeros(max_cells, dtype=np.int32)
 
     if len(simplices) > max_triangles:
-        raise RuntimeError(f"Triangulation requires {len(simplices)} triangles, but max_triangles is {max_triangles}.")
+        raise RuntimeError(
+            f"Triangulation requires {len(simplices)} triangles, but max_triangles is {max_triangles}."
+        )
 
     for triangle_index, simplex in enumerate(simplices):
         i, j, k = simplex
@@ -105,7 +128,9 @@ def build_connectivity(simplices: np.ndarray, num_cells: int, max_cells: int, ma
 
         for cell in simplex:
             if triangle_counts[cell] >= max_degree:
-                raise RuntimeError(f"Cell {cell} belongs to more than max_degree={max_degree} triangles.")
+                raise RuntimeError(
+                    f"Cell {cell} belongs to more than max_degree={max_degree} triangles."
+                )
 
             cell_triangles[cell, triangle_counts[cell]] = triangle_index
             triangle_counts[cell] += 1
@@ -141,20 +166,27 @@ def add_neighbour(indices: np.ndarray, adjacency: np.ndarray, a: int, b: int):
     Returns:
         None.
     """
-    if not np.any(adjacency[a, :indices[a]] == b):
+    if not np.any(adjacency[a, : indices[a]] == b):
         if indices[a] >= adjacency.shape[1]:
             raise RuntimeError(f"Cell {a} exceeds maximum degree {adjacency.shape[1]}.")
 
         adjacency[a, indices[a]] = b
         indices[a] += 1
 
-    if not np.any(adjacency[b, :indices[b]] == a):
+    if not np.any(adjacency[b, : indices[b]] == a):
         if indices[b] >= adjacency.shape[1]:
             raise RuntimeError(f"Cell {b} exceeds maximum degree {adjacency.shape[1]}.")
 
         adjacency[b, indices[b]] = a
         indices[b] += 1
 
+
 # TODO: This should properly implement partial re-triangulation
-def partial_update(adjacency: np.ndarray, num_cells: int, max_degree: int, cell_points: np.ndarray, triangles: np.ndarray):
+def partial_update(
+    adjacency: np.ndarray,
+    num_cells: int,
+    max_degree: int,
+    cell_points: np.ndarray,
+    triangles: np.ndarray,
+):
     pass

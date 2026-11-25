@@ -1,7 +1,10 @@
 import numpy as np
 from scipy.spatial import ConvexHull
 
-def create_boundary(cell_points: np.ndarray, num_cells: int, max_cells: int, spring_length: float):
+
+def create_boundary(
+    cell_points: np.ndarray, num_cells: int, max_cells: int, spring_length: float
+):
     """
     Create a ghost-cell boundary around the convex hull of the tissue.
 
@@ -52,7 +55,9 @@ def create_boundary(cell_points: np.ndarray, num_cells: int, max_cells: int, spr
     num_ghosts = len(ghost_points)
 
     if num_cells + num_ghosts > max_cells:
-        raise RuntimeError(f"Boundary requires {num_ghosts} ghost cells, but only {max_cells - num_cells} slots are available.")
+        raise RuntimeError(
+            f"Boundary requires {num_ghosts} ghost cells, but only {max_cells - num_cells} slots are available."
+        )
 
     boundary_cycle = np.arange(num_cells, num_cells + num_ghosts, dtype=np.int32)
 
@@ -64,7 +69,9 @@ def create_boundary(cell_points: np.ndarray, num_cells: int, max_cells: int, spr
     return boundary_cycle_mask, boundary_cycle, num_cells + num_ghosts
 
 
-def create_hexagonal_boundary(cell_points: np.ndarray, num_cells: int, max_cells: int, spring_length: float):
+def create_hexagonal_boundary(
+    cell_points: np.ndarray, num_cells: int, max_cells: int, spring_length: float
+):
     """
     Create the next axial lattice ring around a complete hexagonal tissue.
 
@@ -77,7 +84,7 @@ def create_hexagonal_boundary(cell_points: np.ndarray, num_cells: int, max_cells
     Returns:
         Boundary mask, ordered boundary cycle, and updated active cell count.
     """
-    num_rings = int(round((-3 + np.sqrt(12 * num_cells - 3)) / 6))
+    num_rings = round((-3 + np.sqrt(12 * num_cells - 3)) / 6)
 
     if 1 + 3 * num_rings * (num_rings + 1) != num_cells:
         raise ValueError(f"num_cells={num_cells} is not a complete hexagonal lattice.")
@@ -97,10 +104,12 @@ def create_hexagonal_boundary(cell_points: np.ndarray, num_cells: int, max_cells
 
     real_center = np.mean(cell_points[:num_cells], axis=0)
 
-    ghost_points = np.column_stack((
-        real_center[0] + spring_length * (q + 0.5 * r),
-        real_center[1] + spring_length * (np.sqrt(3) / 2) * r,
-    )).astype(cell_points.dtype)
+    ghost_points = np.column_stack(
+        (
+            real_center[0] + spring_length * (q + 0.5 * r),
+            real_center[1] + spring_length * (np.sqrt(3) / 2) * r,
+        )
+    ).astype(cell_points.dtype)
 
     relative_points = ghost_points - real_center
     angles = np.arctan2(relative_points[:, 1], relative_points[:, 0])
@@ -110,7 +119,9 @@ def create_hexagonal_boundary(cell_points: np.ndarray, num_cells: int, max_cells
     num_ghosts = len(ghost_points)
 
     if num_cells + num_ghosts > max_cells:
-        raise RuntimeError(f"Boundary requires {num_ghosts} ghost cells, but only {max_cells - num_cells} slots are available.")
+        raise RuntimeError(
+            f"Boundary requires {num_ghosts} ghost cells, but only {max_cells - num_cells} slots are available."
+        )
 
     boundary_cycle = np.arange(num_cells, num_cells + num_ghosts, dtype=np.int32)
     boundary_cycle_mask = np.zeros(max_cells, dtype=bool)
@@ -121,7 +132,12 @@ def create_hexagonal_boundary(cell_points: np.ndarray, num_cells: int, max_cells
     return boundary_cycle_mask, boundary_cycle, num_cells + num_ghosts
 
 
-def constrain_to_cycle(adjacency: np.ndarray, boundary_cycle: np.ndarray, boundary_cycle_mask: np.ndarray, max_degree: int):
+def constrain_to_cycle(
+    adjacency: np.ndarray,
+    boundary_cycle: np.ndarray,
+    boundary_cycle_mask: np.ndarray,
+    max_degree: int,
+):
     """
     Restrict boundary connectivity to consecutive cycle cells and interior neighbours.
 
@@ -150,16 +166,25 @@ def constrain_to_cycle(adjacency: np.ndarray, boundary_cycle: np.ndarray, bounda
         required_degree = len(non_boundary_neighbours) + 2
 
         if required_degree > max_degree:
-            raise RuntimeError(f"Boundary cell {current} requires degree {required_degree}, but max_degree is {max_degree}.")
+            raise RuntimeError(
+                f"Boundary cell {current} requires degree {required_degree}, but max_degree is {max_degree}."
+            )
 
         new_connectivity = np.full(max_degree, -1, dtype=np.int32)
-        new_connectivity[:len(non_boundary_neighbours)] = non_boundary_neighbours
+        new_connectivity[: len(non_boundary_neighbours)] = non_boundary_neighbours
         new_connectivity[len(non_boundary_neighbours)] = before
         new_connectivity[len(non_boundary_neighbours) + 1] = after
         adjacency[current] = new_connectivity
 
 
-def add_additional_boundary_cells(adjacency: np.ndarray, boundary_cycle: np.ndarray, boundary_cycle_mask: np.ndarray, cell_points: np.ndarray, cell_types: np.ndarray, target_areas: np.ndarray):
+def add_additional_boundary_cells(
+    adjacency: np.ndarray,
+    boundary_cycle: np.ndarray,
+    boundary_cycle_mask: np.ndarray,
+    cell_points: np.ndarray,
+    cell_types: np.ndarray,
+    target_areas: np.ndarray,
+):
     """
     Add ghost cells where the current boundary insufficiently encloses the tissue.
 
@@ -217,7 +242,9 @@ def add_additional_boundary_cells(adjacency: np.ndarray, boundary_cycle: np.ndar
 
         active_mask = ~np.all(cell_points == -1, axis=1)
         active_indices = np.flatnonzero(active_mask)
-        distances = np.linalg.norm(cell_points[active_indices] - reflected_point, axis=1)
+        distances = np.linalg.norm(
+            cell_points[active_indices] - reflected_point, axis=1
+        )
 
         if len(distances) > 0 and np.min(distances) < 1e-6:
             existing_index = active_indices[np.argmin(distances)]
@@ -230,7 +257,9 @@ def add_additional_boundary_cells(adjacency: np.ndarray, boundary_cycle: np.ndar
         vacancies = np.flatnonzero(~active_mask)
 
         if len(vacancies) == 0:
-            raise RuntimeError("No vacant cell slots available for additional boundary cell.")
+            raise RuntimeError(
+                "No vacant cell slots available for additional boundary cell."
+            )
 
         vacancy = int(vacancies[0])
         cell_points[vacancy] = reflected_point
@@ -252,7 +281,14 @@ def add_additional_boundary_cells(adjacency: np.ndarray, boundary_cycle: np.ndar
     return num_cells, boundary_cycle
 
 
-def remove_excessive_boundary_cells(adjacency: np.ndarray, boundary_cycle: np.ndarray, boundary_cycle_mask: np.ndarray, cell_points: np.ndarray, cell_types: np.ndarray, target_areas: np.ndarray):
+def remove_excessive_boundary_cells(
+    adjacency: np.ndarray,
+    boundary_cycle: np.ndarray,
+    boundary_cycle_mask: np.ndarray,
+    cell_points: np.ndarray,
+    cell_types: np.ndarray,
+    target_areas: np.ndarray,
+):
     """
     Remove redundant ghost cells from the current boundary cycle.
 
@@ -289,7 +325,9 @@ def remove_excessive_boundary_cells(adjacency: np.ndarray, boundary_cycle: np.nd
             ac_norm = np.linalg.norm(ac)
 
             if bc_norm > 0 and ac_norm > 0:
-                angle = np.arccos(np.clip(np.dot(bc, ac) / (bc_norm * ac_norm), -1.0, 1.0))
+                angle = np.arccos(
+                    np.clip(np.dot(bc, ac) / (bc_norm * ac_norm), -1.0, 1.0)
+                )
 
                 if angle < np.pi / 2:
                     remove_flag = True
@@ -302,7 +340,10 @@ def remove_excessive_boundary_cells(adjacency: np.ndarray, boundary_cycle: np.nd
 
     if remove_cells:
         remove_set = set(remove_cells)
-        boundary_cycle = np.asarray([cell for cell in boundary_cycle if int(cell) not in remove_set], dtype=np.int32)
+        boundary_cycle = np.asarray(
+            [cell for cell in boundary_cycle if int(cell) not in remove_set],
+            dtype=np.int32,
+        )
 
         for current in remove_cells:
             cell_points[current] = [-1, -1]

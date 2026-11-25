@@ -1,11 +1,13 @@
-import matplotlib.pyplot as plt
 import json
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 
 from ciliasim import plotting
 
-class Examine():
+
+class Examine:
     """Load and visualize the saved states of a simulation."""
 
     def __init__(self, simulation_dir: str, output_dir: str = ""):
@@ -22,7 +24,7 @@ class Examine():
         self.simulation_dir = Path(simulation_dir)
         self.output_path = None
         if output_dir:
-            self.output_path = Path(output_dir) / self.simulation_dir.name 
+            self.output_path = Path(output_dir) / self.simulation_dir.name
             self.output_path.mkdir(parents=True, exist_ok=True)
 
         with open(self.simulation_dir / "params.json", "r") as params_file:
@@ -57,17 +59,23 @@ class Examine():
                 animate = plotting.area_strain_animation
             case _:
                 pass
-        
+
         state_files = sorted(self.simulation_dir.glob("*.npz"))
         animation = animate(state_files, self.params)
-         
+
         if show:
             plt.show()
-        
+
         # Save the animation as a .mp4
         if save:
             if not self.output_path:
-                raise ValueError("Both `save` and `output_dir` must be provided for animation saving.")
-            
+                raise ValueError(
+                    "Both `save` and `output_dir` must be provided for animation saving."
+                )
+
             timestamp = datetime.now().strftime("%d-%m-%y_%H-%M-%S")
-            animation.save(self.output_path / f"{timestamp}_{plot_type}.mp4", fps=5, writer="ffmpeg")
+            animation.save(
+                self.output_path / f"{timestamp}_{plot_type}.mp4",
+                fps=5,
+                writer="ffmpeg",
+            )

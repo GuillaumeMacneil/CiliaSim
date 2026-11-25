@@ -1,34 +1,37 @@
-import numpy as np
-import jax
-import jax.numpy as jnp
 import json
-from tqdm import tqdm
 from datetime import datetime
 from pathlib import Path
 
-from ciliasim import initialisation, geometry, boundary, connectivity
+import jax
+import jax.numpy as jnp
+import numpy as np
+from tqdm import tqdm
 
-class Tissue():
+from ciliasim import boundary, connectivity, geometry, initialisation
+
+
+class Tissue:
     """Represent and simulate a two-dimensional Voronoi tissue."""
+
     def __init__(
-            self, 
-            x: int, 
-            y: int, 
-            density: float,
-            spring_length: float = 1.0,
-            spring_constant: float = 1.0,
-            area_constant: float = 1.0,
-            perimeter_constant: float = 1.0,
-            oversize_factor: float = 3.0,
-            max_degree: int = 15,
-            center_only: bool = False,
-            random_layout: bool = False,
-            mobility: float = 0.95,
-            dt: float = 0.01,
-            save: bool = False,
-            save_freq: int = 10,
-            output_dir: str = ""
-            ):
+        self,
+        x: int,
+        y: int,
+        density: float,
+        spring_length: float = 1.0,
+        spring_constant: float = 1.0,
+        area_constant: float = 1.0,
+        perimeter_constant: float = 1.0,
+        oversize_factor: float = 3.0,
+        max_degree: int = 15,
+        center_only: bool = False,
+        random_layout: bool = False,
+        mobility: float = 0.95,
+        dt: float = 0.01,
+        save: bool = False,
+        save_freq: int = 10,
+        output_dir: str = "",
+    ):
         """
         Initialize the tissue geometry, mechanics, and simulation state.
 
@@ -60,7 +63,7 @@ class Tissue():
         self.max_cells = int(self.num_cells * oversize_factor)
         self.max_degree = max_degree
         self.random_layout = random_layout
-       
+
         if (x < 2) or (y < 2):
             raise ValueError("Tissue dimensions must be 2x2 or larger.")
 
@@ -69,7 +72,7 @@ class Tissue():
         self.spring_constant = spring_constant
         self.area_constant = area_constant
         self.perimeter_constant = perimeter_constant
- 
+
         # Composition parameters
         self.density = density
         self.center_only = center_only
@@ -83,11 +86,15 @@ class Tissue():
         self.save = save
         self.save_freq = save_freq
         if not all([save, save_freq, output_dir]):
-            raise ValueError("`save`, `save_freq` and `output_dir` must be provided for state saving.")
+            raise ValueError(
+                "`save`, `save_freq` and `output_dir` must be provided for state saving."
+            )
         else:
-            self.output_path = Path(output_dir) / generate_filename(x, y, center_only, random_layout)
+            self.output_path = Path(output_dir) / generate_filename(
+                x, y, center_only, random_layout
+            )
             self.output_path.mkdir(parents=True, exist_ok=False)
-       
+
         # Positional state arrays
         self.cell_points = np.full((self.max_cells, 2), -1, np.float32)
 
@@ -113,7 +120,9 @@ class Tissue():
         self.adjacency = np.full((self.max_cells, self.max_degree), -1, dtype=np.int32)
         self.max_triangles = (2 * self.max_cells) - 5
         self.triangles = np.full((self.max_triangles, 3), -1, dtype=np.int32)
-        self.cell_triangles = np.full((self.max_cells, self.max_degree), -1, dtype=np.int32)
+        self.cell_triangles = np.full(
+            (self.max_cells, self.max_degree), -1, dtype=np.int32
+        )
         self.boundary_cycle = np.zeros(self.max_cells, dtype=np.int32)
         self.boundary_cycle_mask = np.zeros(self.max_cells, dtype=bool)
 
@@ -133,21 +142,25 @@ class Tissue():
             None.
         """
         # Determine the boundary cycle and specify the individual cell types
-        self.cell_types[:self.num_cells] = 0
+        self.cell_types[: self.num_cells] = 0
 
         if self.random_layout:
-            self.boundary_cycle_mask, self.boundary_cycle, self.num_cells = boundary.create_boundary(
-                self.cell_points,
-                self.num_cells,
-                self.max_cells,
-                self.spring_length,
+            self.boundary_cycle_mask, self.boundary_cycle, self.num_cells = (
+                boundary.create_boundary(
+                    self.cell_points,
+                    self.num_cells,
+                    self.max_cells,
+                    self.spring_length,
+                )
             )
         else:
-            self.boundary_cycle_mask, self.boundary_cycle, self.num_cells = boundary.create_hexagonal_boundary(
-                self.cell_points,
-                self.num_cells,
-                self.max_cells,
-                self.spring_length,
+            self.boundary_cycle_mask, self.boundary_cycle, self.num_cells = (
+                boundary.create_hexagonal_boundary(
+                    self.cell_points,
+                    self.num_cells,
+                    self.max_cells,
+                    self.spring_length,
+                )
             )
 
         self.cell_types[self.boundary_cycle] = 1
@@ -163,19 +176,26 @@ class Tissue():
             self.boundary_cycle_mask,
         )
 
-        boundary.constrain_to_cycle(self.adjacency, self.boundary_cycle, self.boundary_cycle_mask, self.max_degree)
+        boundary.constrain_to_cycle(
+            self.adjacency,
+            self.boundary_cycle,
+            self.boundary_cycle_mask,
+            self.max_degree,
+        )
 
         if self.center_only:
             area_center = np.array([self.x / 2, self.y / 2])
             real_indices = np.where(self.cell_types == 0)[0]
-            center_distances = np.sum((self.cell_points[real_indices] - area_center) ** 2, axis=1)
+            center_distances = np.sum(
+                (self.cell_points[real_indices] - area_center) ** 2, axis=1
+            )
             center_cell = real_indices[np.argmin(center_distances)]
             self.cell_types[center_cell] = 2
         else:
             current_density = 0
             while current_density < self.density:
-                candidates = np.where(self.cell_types[:self.num_cells] == 0)[0]
-                if candidates.size  == 0:
+                candidates = np.where(self.cell_types[: self.num_cells] == 0)[0]
+                if candidates.size == 0:
                     break
 
                 chosen_cell = np.random.choice(candidates)
@@ -187,15 +207,21 @@ class Tissue():
                     if self.cell_types[cell_index] == 0:
                         self.cell_types[cell_index] = 3
 
-                current_density = len(np.where(self.cell_types == 2)[0]) / self.num_cells
+                current_density = (
+                    len(np.where(self.cell_types == 2)[0]) / self.num_cells
+                )
 
             self.cell_types[np.where(self.cell_types == 3)[0]] = 0
-           
+
         # Assign each cell a target area
         if area_distribution[1] == 0:
-            self.target_areas = initialisation.uniform_target_areas(self.cell_types, area_distribution[0])
+            self.target_areas = initialisation.uniform_target_areas(
+                self.cell_types, area_distribution[0]
+            )
         else:
-            self.target_areas = initialisation.normal_random_target_areas(self.cell_types, area_distribution[0], area_distribution[1])
+            self.target_areas = initialisation.normal_random_target_areas(
+                self.cell_types, area_distribution[0], area_distribution[1]
+            )
 
     def set_uniform_ciliary_forces(self, direction: np.ndarray, magnitude: float):
         """
@@ -224,7 +250,9 @@ class Tissue():
         """
         multiciliated_cells = np.where(self.cell_types == 2)[0]
         non_unit_directions = np.random.uniform(-1, 1, [len(multiciliated_cells), 2])
-        unit_directions = non_unit_directions / np.linalg.norm(non_unit_directions, axis=1, keepdims=True)
+        unit_directions = non_unit_directions / np.linalg.norm(
+            non_unit_directions, axis=1, keepdims=True
+        )
         self.cilia_forces[multiciliated_cells] = unit_directions * magnitude
 
     def set_flow_force(self, direction: np.ndarray, magnitude: float):
@@ -256,9 +284,27 @@ class Tissue():
         for _ in range(max_iterations):
             prev_num_cells = self.num_cells
 
-            self.num_cells, self.boundary_cycle = boundary.add_additional_boundary_cells(self.adjacency, self.boundary_cycle, self.boundary_cycle_mask, self.cell_points, self.cell_types, self.target_areas)
+            self.num_cells, self.boundary_cycle = (
+                boundary.add_additional_boundary_cells(
+                    self.adjacency,
+                    self.boundary_cycle,
+                    self.boundary_cycle_mask,
+                    self.cell_points,
+                    self.cell_types,
+                    self.target_areas,
+                )
+            )
             changed = self.num_cells != prev_num_cells
-            self.num_cells, self.boundary_cycle = boundary.remove_excessive_boundary_cells(self.adjacency, self.boundary_cycle, self.boundary_cycle_mask, self.cell_points, self.cell_types, self.target_areas)
+            self.num_cells, self.boundary_cycle = (
+                boundary.remove_excessive_boundary_cells(
+                    self.adjacency,
+                    self.boundary_cycle,
+                    self.boundary_cycle_mask,
+                    self.cell_points,
+                    self.cell_types,
+                    self.target_areas,
+                )
+            )
             changed = (self.num_cells != prev_num_cells) or changed
 
             if not changed:
@@ -266,7 +312,9 @@ class Tissue():
 
             # Compact active cells into the leading rows required by full_update().
             empty_mask = np.all(self.cell_points == -1, axis=1)
-            new_order = np.concatenate([np.nonzero(~empty_mask)[0], np.nonzero(empty_mask)[0]])
+            new_order = np.concatenate(
+                [np.nonzero(~empty_mask)[0], np.nonzero(empty_mask)[0]]
+            )
 
             # Remap the boundary indices to the compacted cell ordering.
             inverse_order = np.empty_like(new_order)
@@ -278,15 +326,40 @@ class Tissue():
             self.cell_types = self.cell_types[new_order]
             self.target_areas = self.target_areas[new_order]
 
-            self.adjacency, self.triangles, self.cell_triangles = connectivity.full_update(self.num_cells, self.max_cells, self.max_degree, self.max_triangles, self.cell_points, self.boundary_cycle, self.boundary_cycle_mask)
+            self.adjacency, self.triangles, self.cell_triangles = (
+                connectivity.full_update(
+                    self.num_cells,
+                    self.max_cells,
+                    self.max_degree,
+                    self.max_triangles,
+                    self.cell_points,
+                    self.boundary_cycle,
+                    self.boundary_cycle_mask,
+                )
+            )
         else:
             raise RuntimeError("Boundary failed to converge.")
 
         if not changed:
             # FIXME: This should correctly implement partial updating
-            self.adjacency, self.triangles, self.cell_triangles = connectivity.full_update(self.num_cells, self.max_cells, self.max_degree, self.max_triangles, self.cell_points, self.boundary_cycle, self.boundary_cycle_mask)
+            self.adjacency, self.triangles, self.cell_triangles = (
+                connectivity.full_update(
+                    self.num_cells,
+                    self.max_cells,
+                    self.max_degree,
+                    self.max_triangles,
+                    self.cell_points,
+                    self.boundary_cycle,
+                    self.boundary_cycle_mask,
+                )
+            )
 
-        boundary.constrain_to_cycle(self.adjacency, self.boundary_cycle, self.boundary_cycle_mask, self.max_degree)
+        boundary.constrain_to_cycle(
+            self.adjacency,
+            self.boundary_cycle,
+            self.boundary_cycle_mask,
+            self.max_degree,
+        )
 
     def simulate(self, iterations: int):
         """
@@ -320,14 +393,18 @@ class Tissue():
             total_force = internal_force + self.cilia_forces
             multiciliated_mask = self.cell_types == 2
             total_force[multiciliated_mask] += self.flow_force
-            
-            real_mask = (self.cell_types[:self.num_cells] != 1) & (self.cell_types[:self.num_cells] != -1)
-            force_magnitudes = np.linalg.norm(internal_force[:self.num_cells][real_mask], axis=1)
 
-            displacement = total_force[:self.num_cells] * self.mobility * self.dt
+            real_mask = (self.cell_types[: self.num_cells] != 1) & (
+                self.cell_types[: self.num_cells] != -1
+            )
+            force_magnitudes = np.linalg.norm(
+                internal_force[: self.num_cells][real_mask], axis=1
+            )
+
+            displacement = total_force[: self.num_cells] * self.mobility * self.dt
             displacement_magnitudes = np.linalg.norm(displacement[real_mask], axis=1)
 
-            self.cell_points[:self.num_cells] += displacement
+            self.cell_points[: self.num_cells] += displacement
             self.evaluate_boundary()
 
             progress.set_postfix(
@@ -359,29 +436,42 @@ class Tissue():
 
                 # Save state to file with given frequency
                 if self.iteration % self.save_freq == 0:
-                    circumcenters = geometry.calculate_circumcenters(self.cell_points, self.triangles)
+                    circumcenters = geometry.calculate_circumcenters(
+                        self.cell_points, self.triangles
+                    )
                     np.savez_compressed(
                         self.output_path / f"{self.iteration:06d}.npz",
-                        iteration = self.iteration,
-                        cell_points = self.cell_points,
-                        circumcenters = circumcenters,
-                        cell_types = self.cell_types,
-                        target_areas = self.target_areas,
-                        adjacency = self.adjacency,
-                        triangles = self.triangles,
-                        cell_triangles = self.cell_triangles,
-                        boundary_cycle_mask = self.boundary_cycle_mask,
-                        boundary_cycle = self.boundary_cycle,
-                        internal_force = internal_force,
-                        cilia_force = self.cilia_forces,
-                        flow_force = self.flow_force,
-                        total_force = total_force,
+                        iteration=self.iteration,
+                        cell_points=self.cell_points,
+                        circumcenters=circumcenters,
+                        cell_types=self.cell_types,
+                        target_areas=self.target_areas,
+                        adjacency=self.adjacency,
+                        triangles=self.triangles,
+                        cell_triangles=self.cell_triangles,
+                        boundary_cycle_mask=self.boundary_cycle_mask,
+                        boundary_cycle=self.boundary_cycle,
+                        internal_force=internal_force,
+                        cilia_force=self.cilia_forces,
+                        flow_force=self.flow_force,
+                        total_force=total_force,
                     )
 
             self.iteration += 1
 
 
-def calculate_energy(cell_points, cell_types, target_areas, triangles, cell_triangles, adjacency, spring_length, spring_constant, area_constant, perimeter_constant):
+def calculate_energy(
+    cell_points,
+    cell_types,
+    target_areas,
+    triangles,
+    cell_triangles,
+    adjacency,
+    spring_length,
+    spring_constant,
+    area_constant,
+    perimeter_constant,
+):
     """
     Calculate the total mechanical energy of the tissue.
 
@@ -406,11 +496,17 @@ def calculate_energy(cell_points, cell_types, target_areas, triangles, cell_tria
     neighbour_points = cell_points[safe_adjacency]
     differences = neighbour_points - cell_points[:, None, :]
 
-    safe_differences = jnp.where(valid_neighbours[..., None], differences, jnp.array([1.0, 0.0]))
+    safe_differences = jnp.where(
+        valid_neighbours[..., None], differences, jnp.array([1.0, 0.0])
+    )
     distances = jnp.linalg.norm(safe_differences, axis=-1)
 
     spring_extensions = distances - spring_length
-    spring_energy = 0.25 * spring_constant * jnp.sum(jnp.where(valid_neighbours, spring_extensions ** 2, 0.0))
+    spring_energy = (
+        0.25
+        * spring_constant
+        * jnp.sum(jnp.where(valid_neighbours, spring_extensions**2, 0.0))
+    )
 
     circumcenters = geometry.calculate_circumcenters(cell_points, triangles)
 
@@ -420,11 +516,17 @@ def calculate_energy(cell_points, cell_types, target_areas, triangles, cell_tria
     real_cells = (cell_types != 1) & (cell_types != -1)
 
     area_errors = areas - target_areas
-    area_energy = 0.5 * area_constant * jnp.sum(jnp.where(real_cells, area_errors ** 2, 0.0))
+    area_energy = (
+        0.5 * area_constant * jnp.sum(jnp.where(real_cells, area_errors**2, 0.0))
+    )
 
     target_perimeter = 2.0 * jnp.sqrt(3.0) * spring_length
     perimeter_errors = perimeters - target_perimeter
-    perimeter_energy = 0.5 * perimeter_constant * jnp.sum(jnp.where(real_cells, perimeter_errors ** 2, 0.0))
+    perimeter_energy = (
+        0.5
+        * perimeter_constant
+        * jnp.sum(jnp.where(real_cells, perimeter_errors**2, 0.0))
+    )
 
     return spring_energy + area_energy + perimeter_energy
 

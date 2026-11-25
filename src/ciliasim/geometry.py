@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 
+
 def calculate_circumcenters(cell_points, triangles):
     """
     Calculate the circumcenter of each triangle.
@@ -18,9 +19,9 @@ def calculate_circumcenters(cell_points, triangles):
     B = cell_points[safe_triangles[:, 1]]
     C = cell_points[safe_triangles[:, 2]]
 
-    a2 = jnp.sum(A ** 2, axis=1)
-    b2 = jnp.sum(B ** 2, axis=1)
-    c2 = jnp.sum(C ** 2, axis=1)
+    a2 = jnp.sum(A**2, axis=1)
+    b2 = jnp.sum(B**2, axis=1)
+    c2 = jnp.sum(C**2, axis=1)
 
     ax, ay = A[:, 0], A[:, 1]
     bx, by = B[:, 0], B[:, 1]
@@ -32,10 +33,13 @@ def calculate_circumcenters(cell_points, triangles):
     edge1 = B - A
     edge2 = C - B
     edge3 = A - C
-    max_edge = jnp.maximum(jnp.maximum(jnp.linalg.norm(edge1, axis=1), jnp.linalg.norm(edge2, axis=1)), jnp.linalg.norm(edge3, axis=1))
+    max_edge = jnp.maximum(
+        jnp.maximum(jnp.linalg.norm(edge1, axis=1), jnp.linalg.norm(edge2, axis=1)),
+        jnp.linalg.norm(edge3, axis=1),
+    )
 
     # Scale the degeneracy tolerance with triangle size.
-    eps = 1e-8 * jnp.maximum(1.0, max_edge ** 2)
+    eps = 1e-8 * jnp.maximum(1.0, max_edge**2)
     degenerate = jnp.abs(d) < eps
     safe_d = jnp.where(degenerate, 1.0, d)
 
@@ -72,7 +76,10 @@ def calculate_cell_areas(circumcenters, cell_triangles):
     next_vertices = jnp.take_along_axis(vertices, next_positions[..., None], axis=1)
 
     # Apply the shoelace formula to each Voronoi polygon.
-    cross_products = vertices[..., 0] * next_vertices[..., 1] - vertices[..., 1] * next_vertices[..., 0]
+    cross_products = (
+        vertices[..., 0] * next_vertices[..., 1]
+        - vertices[..., 1] * next_vertices[..., 0]
+    )
     cross_products = jnp.where(valid, cross_products, 0.0)
 
     return 0.5 * jnp.abs(jnp.sum(cross_products, axis=1))
@@ -100,7 +107,7 @@ def calculate_cell_perimeters(circumcenters, cell_triangles):
     next_vertices = jnp.take_along_axis(vertices, next_positions[..., None], axis=1)
 
     edge_vectors = next_vertices - vertices
-    squared_lengths = jnp.sum(edge_vectors ** 2, axis=-1)
+    squared_lengths = jnp.sum(edge_vectors**2, axis=-1)
 
     # Regularization prevents a singular gradient for zero-length Voronoi edges.
     edge_lengths = jnp.sqrt(squared_lengths + 1e-12)

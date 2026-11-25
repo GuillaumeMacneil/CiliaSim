@@ -1,5 +1,5 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.animation import FuncAnimation
 from matplotlib.collections import LineCollection, PolyCollection
 from scipy.interpolate import griddata
@@ -257,7 +257,9 @@ def get_reporter_text(data):
     num_mcc = np.sum(mcc_mask)
     num_boundary = np.sum(cell_types == 1)
 
-    mean_internal = np.mean(internal_magnitudes) if len(internal_magnitudes) > 0 else 0.0
+    mean_internal = (
+        np.mean(internal_magnitudes) if len(internal_magnitudes) > 0 else 0.0
+    )
     max_internal = np.max(internal_magnitudes) if len(internal_magnitudes) > 0 else 0.0
 
     mean_cilia = np.mean(cilia_magnitudes) if len(cilia_magnitudes) > 0 else 0.0
@@ -332,11 +334,15 @@ def basic_animation(state_files, params):
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
 
-    polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.5)
+    polygon_collection = PolyCollection(
+        polygons, facecolors=colours, edgecolors="black", linewidths=0.5
+    )
     ax.add_collection(polygon_collection)
 
     boundary_points = cell_points[cell_types == 1]
-    boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
+    boundary_scatter = ax.scatter(
+        boundary_points[:, 0], boundary_points[:, 1], color="green", s=10
+    )
 
     reporter = add_reporter(ax, initial_data)
 
@@ -386,7 +392,9 @@ def spring_animation(state_files, params):
 
     polygons, colours = get_real_polygons(cell_types, circumcenters, cell_triangles)
     segments, edges = get_spring_segments(cell_points, adjacency)
-    spring_forces = get_spring_forces(cell_points, edges, spring_length, spring_constant)
+    spring_forces = get_spring_forces(
+        cell_points, edges, spring_length, spring_constant
+    )
 
     x_min, x_max, y_min, y_max = get_plot_limits(state_files)
 
@@ -395,7 +403,9 @@ def spring_animation(state_files, params):
     for state_file in state_files:
         with np.load(state_file) as data:
             _, frame_edges = get_spring_segments(data["cell_points"], data["adjacency"])
-            frame_forces = get_spring_forces(data["cell_points"], frame_edges, spring_length, spring_constant)
+            frame_forces = get_spring_forces(
+                data["cell_points"], frame_edges, spring_length, spring_constant
+            )
 
             if len(frame_forces) > 0:
                 max_force = max(max_force, np.max(np.abs(frame_forces)))
@@ -407,13 +417,19 @@ def spring_animation(state_files, params):
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
 
-    polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.5)
+    polygon_collection = PolyCollection(
+        polygons, facecolors=colours, edgecolors="black", linewidths=0.5
+    )
     ax.add_collection(polygon_collection)
 
     boundary_points = cell_points[cell_types == 1]
-    boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
+    boundary_scatter = ax.scatter(
+        boundary_points[:, 0], boundary_points[:, 1], color="green", s=10
+    )
 
-    spring_collection = LineCollection(segments, cmap="coolwarm", norm=norm, linewidths=0.75)
+    spring_collection = LineCollection(
+        segments, cmap="coolwarm", norm=norm, linewidths=0.75
+    )
     spring_collection.set_array(spring_forces)
     ax.add_collection(spring_collection)
 
@@ -439,7 +455,9 @@ def spring_animation(state_files, params):
         boundary_scatter.set_offsets(boundary_points)
 
         segments, edges = get_spring_segments(cell_points, adjacency)
-        spring_forces = get_spring_forces(cell_points, edges, spring_length, spring_constant)
+        spring_forces = get_spring_forces(
+            cell_points, edges, spring_length, spring_constant
+        )
 
         spring_collection.set_segments(segments)
         spring_collection.set_array(spring_forces)
@@ -505,7 +523,9 @@ def compute_major_axis(polygon):
             continue
 
         try:
-            edge_fraction, axis_distance = np.linalg.solve(system, centroid - edge_start)
+            edge_fraction, axis_distance = np.linalg.solve(
+                system, centroid - edge_start
+            )
         except np.linalg.LinAlgError:
             continue
 
@@ -516,7 +536,9 @@ def compute_major_axis(polygon):
         intersection = centroid + axis_distance * major_direction
 
         # A polygon vertex may be found from both adjacent edges.
-        if not any(np.allclose(intersection, existing, atol=1e-8) for existing in intersections):
+        if not any(
+            np.allclose(intersection, existing, atol=1e-8) for existing in intersections
+        ):
             intersections.append(intersection)
 
     if len(intersections) >= 2:
@@ -527,7 +549,12 @@ def compute_major_axis(polygon):
         first_endpoint = intersections[np.argmin(axis_positions)]
         second_endpoint = intersections[np.argmax(axis_positions)]
 
-        return first_endpoint[0], first_endpoint[1], second_endpoint[0], second_endpoint[1]
+        return (
+            first_endpoint[0],
+            first_endpoint[1],
+            second_endpoint[0],
+            second_endpoint[1],
+        )
 
     # Project the polygon vertices onto the axis as a fallback.
     axis_positions = centered_vertices @ major_direction
@@ -568,14 +595,18 @@ def major_axes_animation(state_files, params):
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
 
-    polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.5)
+    polygon_collection = PolyCollection(
+        polygons, facecolors=colours, edgecolors="black", linewidths=0.5
+    )
     ax.add_collection(polygon_collection)
 
     axis_collection = LineCollection(axis_segments, colors="red", linewidths=1.0)
     ax.add_collection(axis_collection)
 
     boundary_points = cell_points[cell_types == 1]
-    boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
+    boundary_scatter = ax.scatter(
+        boundary_points[:, 0], boundary_points[:, 1], color="green", s=10
+    )
 
     reporter = add_reporter(ax, initial_data)
 
@@ -635,11 +666,17 @@ def boundary_animation(state_files, params):
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
 
-    polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.5)
+    polygon_collection = PolyCollection(
+        polygons, facecolors=colours, edgecolors="black", linewidths=0.5
+    )
     ax.add_collection(polygon_collection)
 
-    boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
-    boundary_line, = ax.plot(closed_boundary[:, 0], closed_boundary[:, 1], color="red", linewidth=1.5)
+    boundary_scatter = ax.scatter(
+        boundary_points[:, 0], boundary_points[:, 1], color="green", s=10
+    )
+    (boundary_line,) = ax.plot(
+        closed_boundary[:, 0], closed_boundary[:, 1], color="red", linewidth=1.5
+    )
 
     reporter = add_reporter(ax, initial_data)
 
@@ -713,12 +750,24 @@ def force_vectors_animation(state_files, params):
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
 
-    polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.5)
+    polygon_collection = PolyCollection(
+        polygons, facecolors=colours, edgecolors="black", linewidths=0.5
+    )
     ax.add_collection(polygon_collection)
 
-    boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10)
+    boundary_scatter = ax.scatter(
+        boundary_points[:, 0], boundary_points[:, 1], color="green", s=10
+    )
 
-    quiver = ax.quiver(real_points[:, 0], real_points[:, 1], real_forces[:, 0], real_forces[:, 1], angles="xy", scale_units="xy", scale=1.5)
+    quiver = ax.quiver(
+        real_points[:, 0],
+        real_points[:, 1],
+        real_forces[:, 0],
+        real_forces[:, 1],
+        angles="xy",
+        scale_units="xy",
+        scale=1.5,
+    )
 
     reporter = add_reporter(ax, initial_data)
 
@@ -768,7 +817,9 @@ def force_field_animation(state_files, params, grid_size=50):
 
     x_min, x_max, y_min, y_max = get_plot_limits(state_files)
 
-    grid_x, grid_y = np.meshgrid(np.linspace(x_min, x_max, grid_size), np.linspace(y_min, y_max, grid_size))
+    grid_x, grid_y = np.meshgrid(
+        np.linspace(x_min, x_max, grid_size), np.linspace(y_min, y_max, grid_size)
+    )
 
     cell_points = initial_data["cell_points"]
     circumcenters = initial_data["circumcenters"]
@@ -782,19 +833,37 @@ def force_field_animation(state_files, params, grid_size=50):
     real_points = cell_points[real_mask]
     real_forces = total_force[real_mask]
 
-    grid_fx = griddata(real_points, real_forces[:, 0], (grid_x, grid_y), method="linear")
-    grid_fy = griddata(real_points, real_forces[:, 1], (grid_x, grid_y), method="linear")
+    grid_fx = griddata(
+        real_points, real_forces[:, 0], (grid_x, grid_y), method="linear"
+    )
+    grid_fy = griddata(
+        real_points, real_forces[:, 1], (grid_x, grid_y), method="linear"
+    )
 
     fig, ax = plt.subplots()
     ax.set_aspect("equal")
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
 
-    polygon_collection = PolyCollection(polygons, facecolors=colours, edgecolors="black", linewidths=0.4, alpha=0.25, zorder=1)
+    polygon_collection = PolyCollection(
+        polygons,
+        facecolors=colours,
+        edgecolors="black",
+        linewidths=0.4,
+        alpha=0.25,
+        zorder=1,
+    )
     ax.add_collection(polygon_collection)
 
     boundary_points = cell_points[cell_types == 1]
-    boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=8, alpha=0.4, zorder=2)
+    boundary_scatter = ax.scatter(
+        boundary_points[:, 0],
+        boundary_points[:, 1],
+        color="green",
+        s=8,
+        alpha=0.4,
+        zorder=2,
+    )
 
     quiver = ax.quiver(grid_x, grid_y, grid_fx, grid_fy, angles="xy", zorder=3)
 
@@ -820,8 +889,12 @@ def force_field_animation(state_files, params, grid_size=50):
         real_points = cell_points[real_mask]
         real_forces = total_force[real_mask]
 
-        grid_fx = griddata(real_points, real_forces[:, 0], (grid_x, grid_y), method="linear")
-        grid_fy = griddata(real_points, real_forces[:, 1], (grid_x, grid_y), method="linear")
+        grid_fx = griddata(
+            real_points, real_forces[:, 0], (grid_x, grid_y), method="linear"
+        )
+        grid_fy = griddata(
+            real_points, real_forces[:, 1], (grid_x, grid_y), method="linear"
+        )
 
         quiver.set_UVC(grid_fx, grid_fy)
 
@@ -853,7 +926,9 @@ def area_strain_animation(state_files, params):
 
     x_min, x_max, y_min, y_max = get_plot_limits(state_files)
 
-    polygons, strains = get_area_strains(cell_types, target_areas, circumcenters, cell_triangles)
+    polygons, strains = get_area_strains(
+        cell_types, target_areas, circumcenters, cell_triangles
+    )
 
     min_strain = np.min(strains)
     max_strain = np.max(strains)
@@ -872,11 +947,26 @@ def area_strain_animation(state_files, params):
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
 
-    polygon_collection = PolyCollection(polygons, array=strains, cmap="coolwarm", norm=norm, edgecolors="black", linewidths=0.5)
+    polygon_collection = PolyCollection(
+        polygons,
+        array=strains,
+        cmap="coolwarm",
+        norm=norm,
+        edgecolors="black",
+        linewidths=0.5,
+    )
     ax.add_collection(polygon_collection)
 
-    boundary_scatter = ax.scatter(boundary_points[:, 0], boundary_points[:, 1], color="green", s=10, zorder=2)
-    multiciliated_scatter = ax.scatter(multiciliated_points[:, 0], multiciliated_points[:, 1], color="black", s=10, zorder=3)
+    boundary_scatter = ax.scatter(
+        boundary_points[:, 0], boundary_points[:, 1], color="green", s=10, zorder=2
+    )
+    multiciliated_scatter = ax.scatter(
+        multiciliated_points[:, 0],
+        multiciliated_points[:, 1],
+        color="black",
+        s=10,
+        zorder=3,
+    )
 
     colorbar = fig.colorbar(polygon_collection, ax=ax)
     colorbar.set_label("Relative area strain")
@@ -892,7 +982,9 @@ def area_strain_animation(state_files, params):
         cell_types = data["cell_types"]
         target_areas = data["target_areas"]
 
-        polygons, strains = get_area_strains(cell_types, target_areas, circumcenters, cell_triangles)
+        polygons, strains = get_area_strains(
+            cell_types, target_areas, circumcenters, cell_triangles
+        )
 
         min_strain = np.min(strains)
         max_strain = np.max(strains)
