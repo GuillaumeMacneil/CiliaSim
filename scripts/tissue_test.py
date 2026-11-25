@@ -15,7 +15,8 @@ tissue = tissue.Tissue(
             output_dir="simulations/"
         )
 
-tissue.specify_cells((0.866, 0.0))
+target_area = np.sqrt(3) / 2 * tissue.spring_length ** 2
+tissue.specify_cells((target_area, 0.0))
 tissue.simulate(2000)
 tissue.set_uniform_ciliary_forces(np.array([0, 0.75]), 1)
 tissue.simulate(2000)

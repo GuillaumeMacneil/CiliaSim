@@ -1,20 +1,23 @@
 import numpy as np
 from scipy.stats import qmc
 
-def uniform_random_layout(x: int, y: int, num_cells: int, max_cells: int) -> np.ndarray:
-    radius = 1 / np.sqrt(num_cells)
+
+def uniform_random_layout(x: int, y: int, num_cells: int, max_cells: int, spring_length: float) -> np.ndarray:
+    radius = spring_length
     points = []
 
     while len(points) != num_cells:
-        radius = radius * 0.95
         pd_sampler = qmc.PoissonDisk(d=2, radius=radius)
         points = pd_sampler.random(n=num_cells) * [x - 1, y - 1]
         points += 0.5
 
-    full_points = np.full((max_cells, 2), -1, dtype=np.float32)
-    full_points[:len(points)] = np.array(points)
+        if len(points) != num_cells:
+            radius *= 0.95
 
-    return full_points 
+    full_points = np.full((max_cells, 2), -1, dtype=np.float32)
+    full_points[:num_cells] = np.asarray(points, dtype=np.float32)
+
+    return full_points
 
 
 def hexagonal_layout(x: int, y: int, num_cells: int, max_cells: int, spring_length: float):
@@ -51,15 +54,17 @@ def hexagonal_layout(x: int, y: int, num_cells: int, max_cells: int, spring_leng
 
 def uniform_target_areas(cell_types: np.ndarray, target_area: float) -> np.ndarray:
     target_areas = np.full(cell_types.shape, target_area, dtype=np.float32)
-    target_areas[np.where(cell_types == 1)[0]] = 0
-    target_areas[np.where(cell_types == -1)[0]] = -1
+    target_areas[cell_types == 1] = 0.0
+    target_areas[cell_types == -1] = -1.0
 
     return target_areas
 
 
-def normal_random_target_areas(cell_types: np.ndarray, num_cells: int, mean: float, std: float) -> np.ndarray:
-    target_areas = np.random.normal(loc=mean, scale=std, size=num_cells)
-    target_areas[np.where(cell_types == 1)[0]] = 0
-    target_areas[np.where(cell_types == -1)[0]] = -1
+def normal_random_target_areas(cell_types: np.ndarray, mean: float, std: float) -> np.ndarray:
+    target_areas = np.full(cell_types.shape, -1.0, dtype=np.float32)
+
+    real_mask = (cell_types != 1) & (cell_types != -1)
+    target_areas[real_mask] = np.random.normal(loc=mean, scale=std, size=np.sum(real_mask))
+    target_areas[cell_types == 1] = 0.0
 
     return target_areas

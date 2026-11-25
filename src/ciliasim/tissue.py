@@ -70,6 +70,7 @@ class Tissue():
                 self.y,
                 self.num_cells,
                 self.max_cells,
+                self.spring_length,
             )
         else:
             self.cell_points, self.num_cells = initialisation.hexagonal_layout(
