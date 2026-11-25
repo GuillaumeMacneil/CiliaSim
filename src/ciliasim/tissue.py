@@ -176,78 +176,6 @@ class Tissue():
 
         boundary.constrain_to_cycle(self.adjacency, self.boundary_cycle, self.boundary_cycle_mask, self.max_degree)
 
-    def old_simulate(self, iterations: int):
-        for _ in tqdm(range(iterations)):
-            # Calculate internal forces
-            internal_force = -calculate_forces(
-                    self.cell_points,
-                    self.cell_types,
-                    self.target_areas,
-                    self.triangles,
-                    self.cell_triangles,
-                    self.adjacency,
-                    self.spring_length,
-                    self.spring_constant,
-                    self.area_constant,
-            )
-
-            internal_force = np.asarray(internal_force)
-            bad_forces = np.where(~np.all(np.isfinite(internal_force), axis=1))[0]
-            if len(bad_forces) > 0:
-                print("Bad forces:", bad_forces)
-                print("Forces:", internal_force[bad_forces])
-                print("Positions:", self.cell_points[bad_forces])
-
-            # Introduce external forces and move cell centers accordingly
-            multiciliated_mask = self.cell_types == 2
-            total_force = internal_force + self.cilia_forces
-            total_force[multiciliated_mask] += self.flow_force
-            self.cell_points[:self.num_cells] += total_force[:self.num_cells] * self.mobility * self.dt
-            self.evaluate_boundary()
-
-            bad = np.where(np.all(self.cell_points[:self.num_cells] == -1, axis=1))[0]
-            if len(bad) > 0:
-                print("[WARNING] Padded in active rows:", bad)
-            bad_refs = np.unique(self.adjacency[:self.num_cells][self.adjacency[:self.num_cells] >= self.num_cells])
-            if len(bad_refs) > 0 :
-                print("[WARNING] References to out-of-range indices:", bad_refs)
-
-            if self.save:
-                # Add static parameters header
-                if self.iteration == 0:
-                    with open(self.output_path / "params.json", "w") as params_file:
-                        static_params = {
-                            "x": self.x,
-                            "y": self.y,
-                            "density": self.density,
-                            "spring_length": self.spring_length,
-                            "spring_constant": self.spring_constant,
-                            "area_constant": self.area_constant,
-                            "max_degree": self.max_degree,
-                            "max_cells": self.max_cells,
-                            "max_triangles": self.max_triangles,
-                            "mobility": self.mobility,
-                            "dt": self.dt,
-                        }
-                        json.dump(static_params, params_file)
-
-                # Save state to file with given frequency
-                if self.iteration % self.save_freq == 0:
-                    circumcenters = geometry.calculate_circumcenters(self.cell_points, self.triangles)
-                    np.savez_compressed(
-                        self.output_path / f"{self.iteration:06d}.npz",
-                        cell_points = self.cell_points,
-                        circumcenters = circumcenters,
-                        cell_types = self.cell_types,
-                        target_areas = self.target_areas,
-                        adjacency = self.adjacency,
-                        triangles = self.triangles,
-                        cell_triangles = self.cell_triangles,
-                        boundary_cycle_mask = self.boundary_cycle_mask
-                    )
-
-            self.iteration += 1
-
     def simulate(self, iterations: int):
         progress = tqdm(range(iterations))
 
@@ -287,6 +215,41 @@ class Tissue():
                 N=self.num_cells,
                 Nb=np.sum(self.boundary_cycle_mask),
             )
+
+            if self.save:
+                # Add static parameters header
+                if self.iteration == 0:
+                    with open(self.output_path / "params.json", "w") as params_file:
+                        static_params = {
+                            "x": self.x,
+                            "y": self.y,
+                            "density": self.density,
+                            "spring_length": self.spring_length,
+                            "spring_constant": self.spring_constant,
+                            "area_constant": self.area_constant,
+                            "max_degree": self.max_degree,
+                            "max_cells": self.max_cells,
+                            "max_triangles": self.max_triangles,
+                            "mobility": self.mobility,
+                            "dt": self.dt,
+                        }
+                        json.dump(static_params, params_file)
+
+                # Save state to file with given frequency
+                if self.iteration % self.save_freq == 0:
+                    circumcenters = geometry.calculate_circumcenters(self.cell_points, self.triangles)
+                    np.savez_compressed(
+                        self.output_path / f"{self.iteration:06d}.npz",
+                        cell_points = self.cell_points,
+                        circumcenters = circumcenters,
+                        cell_types = self.cell_types,
+                        target_areas = self.target_areas,
+                        adjacency = self.adjacency,
+                        triangles = self.triangles,
+                        cell_triangles = self.cell_triangles,
+                        boundary_cycle_mask = self.boundary_cycle_mask
+                    )
+
 
             self.iteration += 1
 
