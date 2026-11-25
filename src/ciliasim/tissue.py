@@ -33,6 +33,7 @@ class Tissue():
         self.num_cells = (x - 1) * (y - 1)
         self.max_cells = int(self.num_cells * oversize_factor)
         self.max_degree = max_degree
+        self.random_layout = random_layout
        
         if (x < 2) or (y < 2):
             raise ValueError("Tissue dimensions must be 2x2 or larger.")
@@ -62,10 +63,22 @@ class Tissue():
        
         # Positional state arrays
         self.cell_points = np.full((self.max_cells, 2), -1, np.float32)
-        if random_layout:
-            self.cell_points = initialisation.uniform_random_layout(self.x, self.y, self.num_cells, self.max_cells)
+
+        if self.random_layout:
+            self.cell_points = initialisation.uniform_random_layout(
+                self.x,
+                self.y,
+                self.num_cells,
+                self.max_cells,
+            )
         else:
-            self.cell_points, self.num_cells = initialisation.hexagonal_layout(self.x, self.y, self.num_cells, self.max_cells)
+            self.cell_points, self.num_cells = initialisation.hexagonal_layout(
+                self.x,
+                self.y,
+                self.num_cells,
+                self.max_cells,
+                self.spring_length,
+            )
 
         self.cell_types = np.full(self.max_cells, -1, dtype=np.int8)
         self.target_areas = np.zeros(self.max_cells, dtype=np.float32)
@@ -83,20 +96,43 @@ class Tissue():
     def specify_cells(self, area_distribution: tuple[float, float]):
         # Determine the boundary cycle and specify the individual cell types
         self.cell_types[:self.num_cells] = 0
-        
-        self.boundary_cycle_mask, self.boundary_cycle, self.num_cells = boundary.create_boundary(self.cell_points, self.num_cells, self.max_cells, self.spring_length)
+
+        if self.random_layout:
+            self.boundary_cycle_mask, self.boundary_cycle, self.num_cells = boundary.create_boundary(
+                self.cell_points,
+                self.num_cells,
+                self.max_cells,
+                self.spring_length,
+            )
+        else:
+            self.boundary_cycle_mask, self.boundary_cycle, self.num_cells = boundary.create_hexagonal_boundary(
+                self.cell_points,
+                self.num_cells,
+                self.max_cells,
+                self.spring_length,
+            )
 
         self.cell_types[self.boundary_cycle] = 1
         self.target_areas[self.boundary_cycle] = 0
-        
-        self.adjacency, self.triangles, self.cell_triangles = connectivity.full_update(self.num_cells, self.max_cells, self.max_degree, self.max_triangles, self.cell_points, self.boundary_cycle, self.boundary_cycle_mask)
+
+        self.adjacency, self.triangles, self.cell_triangles = connectivity.full_update(
+            self.num_cells,
+            self.max_cells,
+            self.max_degree,
+            self.max_triangles,
+            self.cell_points,
+            self.boundary_cycle,
+            self.boundary_cycle_mask,
+        )
 
         boundary.constrain_to_cycle(self.adjacency, self.boundary_cycle, self.boundary_cycle_mask, self.max_degree)
 
         if self.center_only:
             area_center = np.array([self.x / 2, self.y / 2])
-            center_distances = np.sum((area_center - self.cell_points) ** 2)
-            self.cell_types[np.argmin(center_distances)] = 2
+            real_indices = np.where(self.cell_types == 0)[0]
+            center_distances = np.sum((self.cell_points[real_indices] - area_center) ** 2, axis=1)
+            center_cell = real_indices[np.argmin(center_distances)]
+            self.cell_types[center_cell] = 2
         else:
             current_density = 0
             while current_density < self.density:
@@ -123,7 +159,7 @@ class Tissue():
         else:
             self.target_areas = initialisation.normal_random_target_areas(self.cell_types, self.num_cells, area_distribution[0], area_distribution[1])
 
-        self.evaluate_boundary()
+        #self.evaluate_boundary()
         
     def set_uniform_ciliary_forces(self, direction: np.ndarray, magnitude: float):
         force = direction * magnitude

@@ -17,26 +17,31 @@ def uniform_random_layout(x: int, y: int, num_cells: int, max_cells: int) -> np.
     return full_points 
 
 
-def hexagonal_layout(x: int, y: int, num_cells: int, max_cells: int):
+def hexagonal_layout(x: int, y: int, num_cells: int, max_cells: int, spring_length: float):
     num_rings = max(0, int(np.floor((-3 + np.sqrt(12 * num_cells - 3)) / 6)))
     actual_num_cells = 1 + 3 * num_rings * (num_rings + 1)
 
     if actual_num_cells > max_cells:
         raise ValueError(f"Hexagonal layout requires {actual_num_cells} cells, but max_cells={max_cells}.")
 
-    cx = x / 2
-    cy = y / 2
+    axial_points = []
 
-    points = [(cx, cy)]
+    for q in range(-num_rings, num_rings + 1):
+        r_min = max(-num_rings, -q - num_rings)
+        r_max = min(num_rings, -q + num_rings)
 
-    for ring in range(1, num_rings + 1):
-        for j in range(6 * ring):
-            angle = j * np.pi / (3 * ring)
-            px = cx + ring * np.cos(angle)
-            py = cy + ring * np.sin(angle)
-            points.append((px, py))
+        for r in range(r_min, r_max + 1):
+            axial_points.append((q, r))
 
-    points = np.asarray(points, dtype=np.float32)
+    axial_points = np.asarray(axial_points, dtype=np.float32)
+
+    q = axial_points[:, 0]
+    r = axial_points[:, 1]
+
+    points = np.column_stack((
+        x / 2 + spring_length * (q + 0.5 * r),
+        y / 2 + spring_length * (np.sqrt(3) / 2) * r,
+    )).astype(np.float32)
 
     full_points = np.full((max_cells, 2), -1, dtype=np.float32)
     full_points[:actual_num_cells] = points

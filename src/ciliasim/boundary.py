@@ -52,6 +52,51 @@ def create_boundary(cell_points: np.ndarray, num_cells: int, max_cells: int, spr
     return boundary_cycle_mask, boundary_cycle, num_cells + num_ghosts
 
 
+def create_hexagonal_boundary(cell_points: np.ndarray, num_cells: int, max_cells: int, spring_length: float):
+    num_rings = int(round((-3 + np.sqrt(12 * num_cells - 3)) / 6))
+
+    if 1 + 3 * num_rings * (num_rings + 1) != num_cells:
+        raise ValueError(f"num_cells={num_cells} is not a complete hexagonal lattice.")
+
+    boundary_ring = num_rings + 1
+    axial_points = []
+
+    for q in range(-boundary_ring, boundary_ring + 1):
+        for r in range(-boundary_ring, boundary_ring + 1):
+            if max(abs(q), abs(r), abs(q + r)) == boundary_ring:
+                axial_points.append((q, r))
+
+    axial_points = np.asarray(axial_points, dtype=np.float32)
+
+    q = axial_points[:, 0]
+    r = axial_points[:, 1]
+
+    real_center = np.mean(cell_points[:num_cells], axis=0)
+
+    ghost_points = np.column_stack((
+        real_center[0] + spring_length * (q + 0.5 * r),
+        real_center[1] + spring_length * (np.sqrt(3) / 2) * r,
+    )).astype(cell_points.dtype)
+
+    relative_points = ghost_points - real_center
+    angles = np.arctan2(relative_points[:, 1], relative_points[:, 0])
+    order = np.argsort(angles)
+    ghost_points = ghost_points[order]
+
+    num_ghosts = len(ghost_points)
+
+    if num_cells + num_ghosts > max_cells:
+        raise RuntimeError(f"Boundary requires {num_ghosts} ghost cells, but only {max_cells - num_cells} slots are available.")
+
+    boundary_cycle = np.arange(num_cells, num_cells + num_ghosts, dtype=np.int32)
+    boundary_cycle_mask = np.zeros(max_cells, dtype=bool)
+    boundary_cycle_mask[boundary_cycle] = True
+
+    cell_points[boundary_cycle] = ghost_points
+
+    return boundary_cycle_mask, boundary_cycle, num_cells + num_ghosts
+
+
 def constrain_to_cycle(adjacency: np.ndarray, boundary_cycle: np.ndarray, boundary_cycle_mask: np.ndarray, max_degree: int):
     boundary_len = len(boundary_cycle)
 
