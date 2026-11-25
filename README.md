@@ -1,6 +1,6 @@
 # CiliaSim
 
-CiliaSim is a two-dimensional mechanical tissue simulation for studying the behaviour of multiciliated cells (MCCs) within an epithelial tissue.
+CiliaSim is a two-dimensional aperiodic mechanical tissue simulation for studying the behaviour of multiciliated cells (MCCs) and exogenous fluid flows within an epithelial tissue.
 
 Cells are represented by Voronoi regions generated from cell-centre positions. The corresponding Delaunay triangulation defines cell connectivity. Tissue mechanics are described by an energy model incorporating preferred neighbour spacing, cell area, and cell perimeter. Forces are obtained automatically from the gradient of this energy using JAX.
 
@@ -56,13 +56,11 @@ simulation.simulate(1000)
 
 simulation.set_uniform_ciliary_forces(
     np.array([0.0, 1.0]),
-    magnitude=0.75,
+    magnitude=1.0,
 )
 
 simulation.simulate(2000)
 ```
-
-`specify_cells()` takes a `(mean, standard_deviation)` target-area distribution. A standard deviation of zero assigns a uniform target area.
 
 For a regular triangular lattice with nearest-neighbour spacing $l_0$, the corresponding regular hexagonal Voronoi area is:
 
@@ -96,8 +94,6 @@ The simulation uses integer cell types:
 | `0` | Non-multiciliated tissue cell |
 | `1` | Ghost boundary cell |
 | `2` | Multiciliated cell |
-
-During MCC placement, an additional temporary type is used internally to prevent adjacent cells from both being selected as MCCs.
 
 ## Geometry and connectivity
 
@@ -373,13 +369,9 @@ Provides an interface for loading, displaying, and exporting saved simulations.
 
 ## Current limitations
 
-The model uses an ordinary Voronoi tessellation in which cell boundaries are determined entirely by cell-centre positions. Consequently, motion of a Voronoi generator does not necessarily correspond to deformation of a material cell in the same way as an explicit membrane model.
-
-In particular, strongly forced cells can exhibit unintuitive elongation because translating a generator also moves its Voronoi interfaces.
+The model uses an ordinary Voronoi tessellation in which cell boundaries are determined entirely by cell-centre positions. Consequently, strongly forced cells can exhibit unintuitive elongation because translating a generator also moves its Voronoi interfaces.
 
 The current implementation also performs complete Delaunay retriangulation when updating tissue connectivity. Partial or local retriangulation is not yet implemented.
-
-Potential future extensions include weighted Voronoi or power diagrams, improved local topology updates, and more detailed models of cell deformation and active stress.
 
 ## Dependencies
 
